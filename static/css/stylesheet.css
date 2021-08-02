@@ -48,6 +48,10 @@ footer {
     color: var(--fg);
 }
 
+.gameContainer {
+    align-self: center;
+    justify-self: center;
+}
 
 .textbox {
     width: 100%;
