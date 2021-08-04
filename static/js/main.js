@@ -12,6 +12,14 @@ const NUM_WELLS = 2;
 const NUM_LAKE = 20;
 const NUM_EMPTY_SPACE = 10;
 const NUM_GRASS = 50;
+//some unique identifiers we assign to our Sprites for easier collision detection and other stuff
+const TREE = "Tree";
+//a background item which CANNOT be "walked over" e.g. should NOT allow sprite to move over it
+//hence a "stop item"
+const STOP_ITEM = "Stop_Item"
+//a background item which CAN be "walked over" e.g. should allow sprite to move over it
+//e.g. background grass
+const BACKGROUND_ITEM = "Background_Item";
 
 class World extends Component {
     init() {
@@ -36,15 +44,17 @@ class World extends Component {
         this.addStaticObject = this.addStaticObject.bind(this);
         this.fillInGrid = this.fillInGrid.bind(this);
         this.loadHouse = this.loadHouse.bind(this);
-        this.testGrid = this.testGrid.bind(this);
+        this.checkSpriteCollision = this.checkSpriteCollision.bind(this);
         //2D array representing the "pixel chunks" on the board
         //each item holds a reference to the sprite at that pixel chunk - if group, will hold container
         //if "pixel chunk" is empty, it will just hold null
         this.grid = [] 
         //loop through intervals of `SQUARELENGTH` for each of the rows
         //add padding to account for gaps between cells so that game canvas does not stretch beyond full screen
-        this.maxRows = Math.floor((this.pixiApp.renderer.height - 50) / (SQUARELENGTH));
-        this.maxCols= Math.floor((this.pixiApp.renderer.width - 50) / (SQUARELENGTH));
+        this.maxRows = Math.floor(this.pixiApp.renderer.height / (SQUARELENGTH));
+        this.maxCols= Math.floor(this.pixiApp.renderer.width / (SQUARELENGTH));
+        console.log("rows: ", this.maxRows);
+        console.log("cols: ", this.maxCols);
         for (let i = 0; i < this.maxRows; i++) {
             this.grid[i] = [];
             for (let j = 0; j < this.maxCols; j++) {
@@ -54,7 +64,6 @@ class World extends Component {
         }
         window.addEventListener("keydown", this.handleKeyDown);
         window.addEventListener("keyup", this.handleKeyUp);
-        window.addEventListener("click", this.testGrid);
         this.pixiApp.loader
               .add("/static/img/character.png")
               .add("/static/img/overlay.png")
@@ -77,18 +86,57 @@ class World extends Component {
         this.step = 0;
     } 
 
-    testGrid(evt) {
-        const x = evt.clientX - 320;
-        const y = evt.clientY - 1;
-        const row = Math.floor(x / SQUARELENGTH);
-        const col = Math.floor(y / SQUARELENGTH);
-        console.log(this.grid[row][col]);
+    //checks for a collision with our main sprite
+    checkSpriteCollision() {
+        const gameContainer = this.pixiApp.stage.getBounds()
+        //calculate the x and y offset coordinates
+        const xOffset = this.sprite.x - gameContainer.x;
+        const yOffset = this.sprite.y - gameContainer.y;
+
+        //calculate their position relative to our grid
+        const row = Math.floor(xOffset / SQUARELENGTH);
+        const col = Math.floor(yOffset / SQUARELENGTH);
+        // console.log(row, col);
+        //check for corresponding item in our grid
+        if (row < this.grid.length && row >= 0 && col < this.grid[0].length && col >= 0 && this.grid[row][col]) {
+            const item = this.grid[row][col];
+            if (item.identifier === STOP_ITEM) {
+                //need to check whether a sprite is moving INTO the collision (in which case
+                //we want to restrict movement) or AWAY from the collision (in which case we
+                //want to ALLOW movement)
+                if (this.sprite.vx !== 0) {
+                    //check if we should restrict the movement if continue walking "towards" 
+                    //the collision
+                    
+                    console.log("hey!");
+                    //check for the object in our grid that is a small step in 
+                    //the direction the sprite is moving in
+                    const nextRow = Math.floor((xOffset + this.sprite.vx) / SQUARELENGTH);
+                    if (this.grid[nextRow][col] && this.grid[nextRow][col].identifier === STOP_ITEM) {
+                        //prevent movement in the current direction
+                        this.sprite.vx = 0;
+                    }
+                } else if (this.sprite.vy !== 0) {
+                    const nextCol = Math.floor((yOffset+ this.sprite.vy) / SQUARELENGTH);
+                    if (this.grid[row][nextCol] && this.grid[row][nextCol].identifier === STOP_ITEM) {
+                        //prevent movement in the current direction
+                        this.sprite.vy = 0;
+                    }
+                }
+
+            } else if (item.identifier === TREE) {
+                //do something else
+                console.log("TREE!");
+            } else {
+                //do something?
+            }
+        }
     }
 
 
     //takes a heuristic (i.e. number of objects) and a specific objects
     //and initializes the necessary sprites at random location, adding it to the world
-    addObjectsToBackground(numberOfObject, subImageArray) {
+    addObjectsToBackground(numberOfObject, subImageArray, ID) {
         for (let i = 0; i < numberOfObject; i++) {
             const [, , width, height] = subImageArray;
             const [row, col] = this.getRandomLocation(width, height);
@@ -98,9 +146,11 @@ class World extends Component {
                 object = new Sprite(object);
                 object.x = SQUARELENGTH * row;
                 object.y = SQUARELENGTH * col;
+                object.identifier = ID;
                 //TODO: resolve if object size is larger than width/height
                 if (subImageArray[2] > SQUARELENGTH || subImageArray[3] > SQUARELENGTH) {
                     this.fillInGrid(row, col, width, height, object);
+                    console.log("Hello");
                 } else {
                     this.grid[row][col] = object; 
                 }
@@ -110,7 +160,11 @@ class World extends Component {
     }
     
     //helper wrapper method to add a static object to the background
-    addStaticObject(numberOfObject, subImageArrays) {
+    //numberOfObject: number of object we want to create
+    //subImageArrays: array of arrays - each element is an array of [x, y, width, height]
+    //defining where the sub-image exists within our tileset
+    //ID: a constant to identify what kind of sprite this is in the future 
+    addStaticObject(numberOfObject, subImageArrays, ID) {
         //introduce
         while (subImageArrays.length > 0) {
             //divide by the subImageArray length to encourage "reaching" or using up
@@ -118,9 +172,9 @@ class World extends Component {
             const currNum = Math.floor(Math.random() * numberOfObject / subImageArrays.length);
             const next = subImageArrays.shift();
             if (subImageArrays.length === 0) {
-                this.addObjectsToBackground(numberOfObject, next);
+                this.addObjectsToBackground(numberOfObject, next, ID);
             } else {
-                this.addObjectsToBackground(currNum, next);
+                this.addObjectsToBackground(currNum, next, ID);
                 numberOfObject -= currNum;
             }
         } 
@@ -154,17 +208,17 @@ class World extends Component {
         const emptyYard = [[0, 67, 48, 48]];
         //TODO: handle if size of item larger than the square, and assign the reference
         //to the correct neighboring items
-        this.addStaticObject(NUM_GRASS, grass);
-        this.addStaticObject(NUM_ROCKS, rocks);
-        this.addStaticObject(NUM_FLOWERS, flowers);
-        this.addStaticObject(NUM_WELLS, well);
+        this.addStaticObject(NUM_GRASS, grass, BACKGROUND_ITEM);
+        this.addStaticObject(NUM_ROCKS, rocks, STOP_ITEM);
+        this.addStaticObject(NUM_FLOWERS, flowers, BACKGROUND_ITEM);
+        this.addStaticObject(NUM_WELLS, well, STOP_ITEM);
         // this.addStaticObject(NUM_LAKE, lake);
         // this.addStaticObject(NUM_EMPTY_SPACE, emptyYard);
     }
 
     //populates random number of trees onto the canvas up to a maximum
     populateTrees(numTrees = 30) {
-        this.addObjectsToBackground(numTrees, [96, 80, 32, 32]);
+        this.addObjectsToBackground(numTrees, [96, 80, 32, 32], TREE);
     }
     //fills in an object greater than our square size into the corresponding cells in our grid
     //x, y correspond to the top left point of our image
@@ -176,6 +230,7 @@ class World extends Component {
                 this.grid[row + x][col + y] = object;
             }
         }
+        console.log(object.identifier);
     }
 
     //helper wrapper method on the `fillInGrid` to do so from x, y coordinates
@@ -194,8 +249,9 @@ class World extends Component {
         house.y = 250;
         house.scale.set(0.2, 0.2);
         //fill the house in our grid
+        house.identifier = STOP_ITEM;
         this.fillInGridFromXY(250, 250, house.width + 50, house.height + 50, house);
-        this.pixiApp.stage.addChild(house);
+        this.staticBackground.addChild(house);
         //add bushes around the house
         let bushes1 = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
         let bushes2 = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
@@ -212,12 +268,14 @@ class World extends Component {
         bushes1.y = 250;
         bushes2.x = bush2X
         bushes2.y = 250;
+        bushes1.identifier = BACKGROUND_ITEM;
+        bushes2.identifier = BACKGROUND_ITEM;
         //fill them in our grid
         this.fillInGridFromXY(bush1X, 250, bushes1.width, bushes1.height, bushes1);
         this.fillInGridFromXY(bush2X, 250, bushes2.width, bushes2.height, bushes2);
         
-        this.pixiApp.stage.addChild(bushes1);
-        this.pixiApp.stage.addChild(bushes2);
+        this.staticBackground.addChild(bushes1);
+        this.staticBackground.addChild(bushes2);
 
 
         //add small decorations around the house
@@ -234,8 +292,9 @@ class World extends Component {
         walkway = new PIXI.TilingSprite(walkway, 16, 80);
         walkway.y = houseY - walkway.height;
         walkway.x = houseX + houseWidth / 2 
+        walkway.identifier = BACKGROUND_ITEM;
         this.fillInGridFromXY(walkway.x, walkway.y, walkway.width, walkway.height, walkway);
-        this.pixiApp.stage.addChild(walkway);
+        this.staticBackground.addChild(walkway);
 
         //farm
         let farm = new PIXI.Texture(TextureCache["/static/img/farm.png"]);
@@ -243,11 +302,13 @@ class World extends Component {
         farm.scale.set(0.3, 0.3);
         farm.x = walkway.x - Math.floor(3 * farm.width / 5);
         farm.y = walkway.y - farm.height;
-        this.pixiApp.stage.addChild(farm);
+        this.staticBackground.addChild(farm);
+        farm.identifier = STOP_ITEM;
         this.fillInGridFromXY(farm.x, farm.y, farm.width, farm.height, farm);
         
     }
 
+    //initial set up called to render the main screen
     setup() {
         let backgroundTexture = TextureCache["/static/img/rpg.png"];
         backgroundTexture.frame = new Rectangle(112, 54, 30, 10);
@@ -264,6 +325,14 @@ class World extends Component {
         //tell texture to only use that rectangle
         texture.frame = rectangle;
 
+        //create background container for objects we don't want our sprite to be able to 
+        //"move through"
+        this.staticBackground = new PIXI.Container();
+
+        this.loadHouse();
+        this.populateTrees();
+        this.populateBackground();
+
         //Create the sprite from the texture
         //Sprite is how we interact with our thoughts!
         this.sprite = new Sprite(texture);
@@ -274,13 +343,11 @@ class World extends Component {
         this.sprite.vx = 0;
         this.sprite.vy = 0;
 
+        //Add static background container to the stage
+        this.pixiApp.stage.addChild(this.staticBackground);
+
         //Add the sprite to the stage
         this.pixiApp.stage.addChild(this.sprite);
-        
-        this.loadHouse();
-        this.populateTrees();
-        this.populateBackground();
-
 
         //Render the stage   
         this.pixiApp.renderer.render(this.pixiApp.stage);
@@ -356,11 +423,15 @@ class World extends Component {
     }
 
     //delta = amount of fractional lag between frames
+    //main game loop that gets called at x FPS where x depends on device (usually x = 60)
     gameLoop(delta) {
+        //check if colliding with static background to prevent "walking through" it
         this.updateState(delta);
     }
 
+    //handles updating the state of our game
     updateState(delta) {
+        this.checkSpriteCollision();
         this.sprite.x += this.sprite.vx;
         this.sprite.y += this.sprite.vy;
         this.sprite.texture.frame = this.walkingSteps[this.orientation][this.step];
