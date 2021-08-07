@@ -2,13 +2,13 @@ html, body {
     width: 100%;
     min-height: 100vh;
     margin: 0 auto;
-    --fgHover: rgb(32, 32, 32, 0.1);
+    /* --fgHover: rgb(32, 32, 32, 0.1);
     --fg: #222;
-    --bg: #eeecec;
+    --bg: #eeecec; */
     font-family: 'Fira Sans', sans-serif;
     font-weight: 300;
-    background: var(--bg);
-    color: var(--fg);
+    background: #82AA28;
+    color: #222;
 }
 
 body.dark {
@@ -26,7 +26,7 @@ body.dark {
 }
 
 main {
-    max-width: 800px;
+    /* max-width: 800px; */
     height: 100vh;
     margin: 0 auto;
     display: flex;
@@ -44,8 +44,9 @@ footer {
     flex-shrink: 0;
     padding: 8px 2px 8px 2px;
     text-align: center; 
-    font-size: 1em;
-    color: var(--fg);
+    font-size: 1.5em;
+    font-family: 'Londrina Outline', cursive;
+    color: #222;
 }
 
 .gameContainer {

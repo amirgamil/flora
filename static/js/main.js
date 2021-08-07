@@ -21,17 +21,25 @@ const STOP_ITEM = "Stop_Item"
 //e.g. background grass
 const BACKGROUND_ITEM = "Background_Item";
 
+function getRandomArbitrary(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+
 class World extends Component {
     init() {
         //create the Pixi application
         this.pixiApp = new PIXI.Application({ 
-            width: 800,         // default: 800
-            height: 600,        // default: 600
+            width: window.innerWidth - 40,         // default: 800
+            height: window.innerHeight - 40,        // default: 600
             antialias: true,    // default: false
             transparent: true, // default: false
             resolution: 1       // default: 1
           }
         );
+        // this.pixiApp.renderer.resize(window.innerWidth, window.innerHeight);
         this.setup = this.setup.bind(this);
         this.gameLoop = this.gameLoop.bind(this);
         this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -45,7 +53,12 @@ class World extends Component {
         this.addStaticObject = this.addStaticObject.bind(this);
         this.fillInGrid = this.fillInGrid.bind(this);
         this.loadHouse = this.loadHouse.bind(this);
+        this.generateSections = this.generateSections.bind(this);
         this.checkSpriteCollision = this.checkSpriteCollision.bind(this);
+        this.loadTextureWithFrame = this.loadTextureWithFrame.bind(this);
+        this.loadTexture = this.loadTexture.bind(this);
+        this.loadPathToSection = this.loadPathToSection.bind(this);
+        this.loadSectionsWithData = this.loadSectionsWithData.bind(this);
         //2D array representing the "pixel chunks" on the board
         //each item holds a reference to the sprite at that pixel chunk - if group, will hold container
         //if "pixel chunk" is empty, it will just hold null
@@ -60,15 +73,17 @@ class World extends Component {
         window.addEventListener("keyup", this.handleKeyUp);
         this.pixiApp.loader
               .add("/static/img/character.png")
-              .add("/static/img/overlay.png")
-              .add("/static/img/background.png")
-              .add("/static/img/trees.png")
               .add("/static/img/rpg.png")
+              .add("/static/img/front.png")
+              .add("/static/img/frontwall.png")
               .add("/static/img/houseRatio.png")
+              .add("/static/img/walkwayside.png")
+              .add("/static/img/walkwayup.png")
               .add("/static/img/grid.png")
               .add("/static/img/farm.png")
               .add("/static/img/rock.png")
               .add("/static/img/farmRatio.png")
+              .add("/static/img/cliff.png")
               .load(this.setup);
         for (let i = 0; i < this.maxRows; i++) {
             this.grid[i] = [];
@@ -89,6 +104,24 @@ class World extends Component {
         this.orientation = 2;
         this.step = 0;
     } 
+
+    loadTextureWithFrame(x, y, textureCacheURL, ID, frame, container = this.pixiApp.stage) {
+        let sprite = this.loadTexture(x, y, textureCacheURL, ID, container);
+        sprite.frame = frame;
+        return sprite;
+    }
+
+    loadTexture(x, y, textureCacheURL, ID, container) {
+        let sprite = new PIXI.Texture(TextureCache[textureCacheURL])
+        sprite = new Sprite(sprite);
+        sprite.x = x;
+        sprite.y = y;
+        sprite.identifier = ID;
+        this.fillInGridFromXY(sprite.x, sprite.y, sprite.width, sprite.height, sprite);
+        container.addChild(sprite);
+        return sprite
+    }
+
 
     outOfBounds(row, col) {
         if (row < 0 || row >= this.grid.length || col < 0 || col >= this.grid[0].length) {
@@ -113,18 +146,21 @@ class World extends Component {
         const col = Math.floor(centerX / SQUARELENGTH);
 
         //CODE TO HANDLE ALL OTHER COLLISIONS
-        if (!this.outOfBounds(row, col) && this.grid[row][col]) {
-            const item = this.grid[row][col];
-            if (item.identifier === TREE) {
-                //do something else
-                console.log("TREE!");
-                return ;
-            } else if (item.identifier === BACKGROUND_ITEM) {
-                //do something?
-                return ;
-            }
-        } else if (!this.grid[row][col]) {
-            return ;
+        if (!this.outOfBounds(row, col)) {
+            if (this.grid[row][col]) {
+                const item = this.grid[row][col];
+                if (item.identifier === TREE) {
+                    //do something else
+                    console.log("TREE!");
+                    return ;
+                } else if (item.identifier === BACKGROUND_ITEM) {
+                    //do something?
+                    return ;
+                }
+            } 
+        } else {
+            // this.sprite.vx = 0;
+            // this.sprite.vy = 0;
         }
 
         //CODE TO HANDLE COLLISION WITH A STOP ITEM
@@ -247,7 +283,9 @@ class World extends Component {
         const numSquaresHigh = Math.ceil(height / SQUARELENGTH);
         for (let x = 0; x < numSquaresHigh; x++) {
             for (let y = 0; y < numSquaresWide; y++) {
-                this.grid[row + x][col + y] = object;
+                if (!this.outOfBounds(row + x, col + y)) {
+                    this.grid[row + x][col + y] = object;
+                }
             }
         }
     }
@@ -265,11 +303,11 @@ class World extends Component {
         let house = TextureCache["/static/img/houseRatio.png"];
         house = new Sprite(house);
         //needs to be a multiple of 32 so it fits nice and flush with our grid
-        const houseX = 256;
-        const houseY = 256;
+        const houseX = 320;
+        const houseY = 192;
         house.x = houseX;
         house.y = houseY;
-        // house.scale.set(0.2, 0.2);
+        //rotate house pi/2 radians anti-clockwise
         //fill the house in our grid
         house.identifier = STOP_ITEM;
         this.fillInGridFromXY(houseX, houseY, house.width, house.height, house);
@@ -282,7 +320,7 @@ class World extends Component {
         bushes2.frame = rectangle;
         bushes1 = new Sprite(bushes1);
         bushes2 = new Sprite(bushes2);
-        bushes1.height = house.height - 20;
+        bushes1.height = house.height - 2 * SQUARELENGTH;
         bushes2.height = house.height;
         const bush1X = houseX - bushes1.width;
         const bush2X = houseX + house.width;
@@ -301,43 +339,134 @@ class World extends Component {
 
 
         //add small decorations around the house
-        this.loadDecor(house.x, house.y, house.width);
+        this.loadDecor(house.x, house.y, house.width, house.height);
 
+        //add cliff
+        const cliffX = 3 * SQUARELENGTH;
+        const cliffY = houseY + house.height - 2 * SQUARELENGTH;
+        let cliffLeft = this.loadTexture(cliffX, cliffY, "/static/img/cliff.png", BACKGROUND_ITEM, this.staticBackground);
 
     }
     
     
-    loadDecor(houseX, houseY, houseWidth) {
+    loadDecor(houseX, houseY, houseWidth, houseHeight) {
         //walkway leading up to farm
-        let walkway = new PIXI.Texture(TextureCache["/static/img/rpg.png"])
-        walkway.frame = new Rectangle(64, 64, 16, 16);
-        walkway = new PIXI.TilingSprite(walkway, 16, 3 * SQUARELENGTH);
-        walkway.y = houseY - walkway.height;
-        walkway.x = houseX + houseWidth / 2 
-        walkway.identifier = BACKGROUND_ITEM;
-        this.fillInGridFromXY(walkway.x, walkway.y, walkway.width, walkway.height, walkway);
-        this.staticBackground.addChild(walkway);
+        let walkwayBack = new PIXI.Texture(TextureCache["/static/img/walkwayup.png"])
+        walkwayBack = new PIXI.TilingSprite(walkwayBack, SQUARELENGTH, 3 * SQUARELENGTH);
+        walkwayBack.y = houseY - walkwayBack.height;
+        walkwayBack.x = houseX + houseWidth / 2 
+        walkwayBack.identifier = BACKGROUND_ITEM;
+        this.fillInGridFromXY(walkwayBack.x, walkwayBack.y, walkwayBack.width, walkwayBack.height, walkwayBack);
+        this.staticBackground.addChild(walkwayBack);
 
         //farm
-        let farm = new PIXI.Texture(TextureCache["/static/img/farmRatio.png"]);
-        farm = new Sprite(farm);
-        farm.x = walkway.x - Math.floor(3 * farm.width / 5);
-        farm.y = walkway.y - farm.height;
-        this.staticBackground.addChild(farm);
-        farm.identifier = STOP_ITEM;
-        this.fillInGridFromXY(farm.x, farm.y, farm.width, farm.height, farm);
+        let farmX = walkwayBack.x - Math.floor(3 * 160 / 5);
+        let farmY = walkwayBack.y - 128;
+        let farm = this.loadTexture(farmX, farmY, "/static/img/farmRatio.png", STOP_ITEM, this.staticBackground);
+        
+        if (window.innerHeight > houseY + houseHeight) {
+            //front porch
+            let walkwayX =  houseX + SQUARELENGTH;
+            let walkwayY =  houseY + houseHeight;
+            let walkwayFront = this.loadTexture(walkwayX, walkwayY, "/static/img/front.png", BACKGROUND_ITEM, this.staticBackground);
+            //wall for front porch
+            let porchX =  walkwayFront.x - 2 * SQUARELENGTH;
+            let porchY =  walkwayFront.y + 3 * SQUARELENGTH;
+            let porch = this.loadTexture(porchX, porchY, "/static/img/frontwall.png", STOP_ITEM, this.staticBackground);
+            let porchX2 = walkwayFront.x + 3 * SQUARELENGTH;
+            let porch2 = this.loadTexture(porchX2, porchY, "/static/img/frontwall.png", STOP_ITEM, this.staticBackground);
+
+            //bottom border path
+            let bottomWalkway = new PIXI.Texture(TextureCache["/static/img/walkwayside.png"])
+            bottomWalkway = new PIXI.TilingSprite(bottomWalkway, SQUARELENGTH * this.maxCols, SQUARELENGTH);
+            bottomWalkway.y = porch2.y - SQUARELENGTH;
+            bottomWalkway.x = 0;
+            bottomWalkway.identifier = BACKGROUND_ITEM;
+            this.fillInGridFromXY(bottomWalkway.x, bottomWalkway.y, bottomWalkway.width, bottomWalkway.height, bottomWalkway);
+            this.staticBackground.addChild(bottomWalkway);
+        }
         
     }
 
+
+    //loads a path between two objects
+    loadPathToSection(object1, row1, col1, object2, row2, col2) {
+        //check if they're parallel to each other
+        let path = new PIXI.Texture(TextureCache["/static/img/rpg.png"])
+        path.frame = new Rectangle(0, 67, 32, 32);
+        if (row1 === row2 && col1 !== col2) {
+            path = new PIXI.TilingSprite(path, SQUARELENGTH, object2.x - object1.x);
+            path.x = object1.x; 
+            path.y = object1.y;
+            console.log("hooray!");
+        } else if (col1 == col2 && row1 !== row2) {
+            path = new PIXI.TilingSprite(path, object2.y - object1.y, SQUARELENGTH);
+            path.x = object1.x; 
+            path.y = object1.y;
+            console.log("hoorah!");
+        } else {
+            return ;
+        }
+
+        path.identifier = BACKGROUND_ITEM;
+        this.fillInGridFromXY(path.x, path.y, path.width, path.height, path);
+        this.staticBackground.addChild(path);
+    }
+
+    generateSections() {
+        const halfRows = Math.floor(this.maxRows / 2);
+        const halfCols = Math.floor(this.maxCols / 2);
+        const areas = [[0,0], [halfRows, 0], [this.maxRows - 4, 0], [this.maxRows - 3, halfCols - getRandomArbitrary(3, 5)],
+                       [this.maxRows - getRandomArbitrary(3, 6), this.maxCols - 3], [halfRows - 3, this.maxCols - getRandomArbitrary(3, 7)], [0, this.maxCols - getRandomArbitrary(3, 6)]];
+        var lastSection = null;
+        //need to keep track of how many sections we ACTUALLY load
+        var numSections = 0;
+        for (let section = 0; section < areas.length ; section++) {
+            //section is a 5x5 area of land
+            const width = 3 * SQUARELENGTH;
+            const height = 3 * SQUARELENGTH;
+            const [row, col] = areas[section]
+            //check 4 corners are free before placing it
+            if (!this.grid[row][col] && !this.grid[row + 2][col] && !this.grid[row][col + 2] && !this.grid[row + 2][col + 2]) {
+                const x =  col * SQUARELENGTH;
+                const y = row * SQUARELENGTH;
+                numSections += 1;
+                let yard = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
+                yard.frame = new Rectangle(0, 67, 48, 48);
+                yard = new Sprite(yard);
+                yard.scale.set(2, 2);
+                yard.x = x;
+                yard.y = y;
+                this.pixiApp.stage.addChild(yard);
+                this.fillInGridFromXY(x, y, yard.width, yard.height, yard);
+                if (lastSection) {
+                    this.loadPathToSection(yard, row, col, ...lastSection);
+                }
+                lastSection = [yard, row, col];
+                //layout the walkway 
+            } else {
+                console.log(row, col);
+            }
+        }
+        return numSections;
+    }
+
+    //populate the sections with our data
+    loadSectionsWithData(numSections) {
+        //make fetch API call, iterate through each result, for now hard-code
+        const results = [{dummy: true}, {dummy: true}, {dummy: true}, {dummy: true}];
+        results.map(data => {
+            //do stuff to display data
+        });
+    }
     //initial set up called to render the main screen
     setup() {
-        let backgroundTexture = TextureCache["/static/img/grid.png"];
+        let backgroundTexture = TextureCache["/static/img/rpg.png"];
         // let backgroundTexture = TextureCache["/static/img/rpg.png"];
-        //112, 54, 30, 10 - old grass
         // 71, 23, 32, 32- new grass
-        // backgroundTexture.frame = new Rectangle(71, 23, 32, 32);
+        backgroundTexture.frame = new Rectangle(71, 23, 32, 32);
         //Create and add background
-        this.overlay = new PIXI.TilingSprite(backgroundTexture, 800, 600);
+        this.overlay = new PIXI.TilingSprite(backgroundTexture, window.innerWidth - 40, window.innerHeight - 40);
         // this.overlay = new Sprite(TextureCache["/static/img/overlay.png"])
         this.pixiApp.stage.addChild(this.overlay);
 
@@ -352,8 +481,12 @@ class World extends Component {
         //create background container for objects we don't want our sprite to be able to 
         //"move through"
         this.staticBackground = new PIXI.Container();
-
         this.loadHouse();
+        //TODO: do something to process from backend based on num sections - make an API
+        //call probably with the number of sections and have backend return JSON response
+        //with result = length of numSections
+        const numSections = this.generateSections();
+        this.loadSectionsWithData(numSections);
         this.populateTrees();
         this.populateBackground();
 
@@ -379,26 +512,26 @@ class World extends Component {
         //Add our ticker or game loop
         this.pixiApp.ticker.add(delta => this.gameLoop(delta));
         //diplay our grid for debugging purposes
-        for (let row = 0; row < this.grid.length; row++) {
-            for (let col = 0; col < this.grid[0].length; col++) {
-                if (this.grid[row][col]) {
-                    var graphics = new PIXI.Graphics();
-                    //set background as transparent to see original map
-                    graphics.beginFill(0, 0.1);
-                    if (this.grid[row][col] && this.grid[row][col].identifier === STOP_ITEM) {
-                        graphics.lineStyle(1, 0xFF0000);
-                    } else {
-                        graphics.lineStyle(1, 0x00ffff);
-                    }
+        // for (let row = 0; row < this.grid.length; row++) {
+        //     for (let col = 0; col < this.grid[0].length; col++) {
+        //         if (this.grid[row][col]) {
+        //             var graphics = new PIXI.Graphics();
+        //             //set background as transparent to see original map
+        //             graphics.beginFill(0, 0.1);
+        //             if (this.grid[row][col] && this.grid[row][col].identifier === STOP_ITEM) {
+        //                 graphics.lineStyle(1, 0xFF0000);
+        //             } else {
+        //                 graphics.lineStyle(1, 0x00ffff);
+        //             }
 
-                    // draw a rectangle
-                    //remember col = x coordinate, and row corresponds to y coordinate
-                    graphics.drawRect(col * SQUARELENGTH, row * SQUARELENGTH, SQUARELENGTH, SQUARELENGTH);
+        //             // draw a rectangle
+        //             //remember col = x coordinate, and row corresponds to y coordinate
+        //             graphics.drawRect(col * SQUARELENGTH, row * SQUARELENGTH, SQUARELENGTH, SQUARELENGTH);
 
-                    this.pixiApp.stage.addChild(graphics);
-                }
-            }
-        }
+        //             this.pixiApp.stage.addChild(graphics);
+        //         }
+        //     }
+        // }
     }
 
     handleKeyDown(evt) {
