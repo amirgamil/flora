@@ -5,13 +5,16 @@ let Application = PIXI.Application,
     Rectangle = PIXI.Rectangle;
 
 //chosen based on ~ size of our trees    
-const SQUARELENGTH = 32;
+const SQUARELENGTH = 16;
 const NUM_FLOWERS = 30;
 const NUM_ROCKS = 10;//25;
 const NUM_WELLS = 2;
 const NUM_LAKE = 20;
 const NUM_EMPTY_SPACE = 10;
 const NUM_GRASS = 50;
+
+const STEP_SIZE = 1;
+
 //some unique identifiers we assign to our Sprites for easier collision detection and other stuff
 const TREE = "Tree";
 //a background item which CANNOT be "walked over" e.g. should NOT allow sprite to move over it
@@ -20,6 +23,13 @@ const STOP_ITEM = "Stop_Item"
 //a background item which CAN be "walked over" e.g. should allow sprite to move over it
 //e.g. background grass
 const BACKGROUND_ITEM = "Background_Item";
+
+//size of displayed screen
+const WIDTH = 800;
+const HEIGHT = 640;
+//size of moving window
+const WINDOW_WIDTH = 25;
+const WINDOW_HEIGHT = 20;
 
 function getRandomArbitrary(min, max) {
     min = Math.ceil(min);
@@ -32,14 +42,19 @@ class World extends Component {
     init() {
         //create the Pixi application
         this.pixiApp = new PIXI.Application({ 
-            width: window.innerWidth - 40,         // default: 800
-            height: window.innerHeight - 40,        // default: 600
+            width: WIDTH,//window.innerWidth - 40,         // default: 800
+            height: HEIGHT,//window.innerHeight - 40,        // default: 600
             antialias: true,    // default: false
             transparent: true, // default: false
             resolution: 1       // default: 1
           }
         );
-        // this.pixiApp.renderer.resize(window.innerWidth, window.innerHeight);
+        this.leftX = 10;
+        this.leftY = 20;
+        this.staticBackground = new PIXI.Container();
+        //global sprite offsets to help render the map as the camera moves
+        this.playerOffsetX = 0;
+        this.playerOffsetY = 0;
         this.setup = this.setup.bind(this);
         this.gameLoop = this.gameLoop.bind(this);
         this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -59,6 +74,9 @@ class World extends Component {
         this.loadTexture = this.loadTexture.bind(this);
         this.loadPathToSection = this.loadPathToSection.bind(this);
         this.loadSectionsWithData = this.loadSectionsWithData.bind(this);
+        this.getMap = this.getMap.bind(this);
+        this.loadMap = this.loadMap.bind(this);
+        this.renderMap = this.renderMap.bind(this);
         //2D array representing the "pixel chunks" on the board
         //each item holds a reference to the sprite at that pixel chunk - if group, will hold container
         //if "pixel chunk" is empty, it will just hold null
@@ -93,7 +111,7 @@ class World extends Component {
             }
         }
         //0 represents up, 1 is right, 2 is down, 3 is left
-        //represe
+        //old 32x32
         this.walkingSteps = {0: [new Rectangle(192, 0, 32, 32), new Rectangle(224, 0, 32, 32), new Rectangle(256, 0, 32, 32)],
                              1: [new Rectangle(288, 0, 32, 32), new Rectangle(320, 0, 32, 32), new Rectangle(352, 0, 32, 32)],
                              2: [new Rectangle(0, 0, 32, 32), new Rectangle(32, 0, 32, 32), new Rectangle(64, 0, 32, 32)],
@@ -383,7 +401,7 @@ class World extends Component {
             bottomWalkway.x = 0;
             bottomWalkway.identifier = BACKGROUND_ITEM;
             this.fillInGridFromXY(bottomWalkway.x, bottomWalkway.y, bottomWalkway.width, bottomWalkway.height, bottomWalkway);
-            this.staticBackground.addChild(bottomWalkway);
+            this.etaticBackground.addChild(bottomWalkway);
         }
         
     }
@@ -422,7 +440,7 @@ class World extends Component {
         //need to keep track of how many sections we ACTUALLY load
         var numSections = 0;
         for (let section = 0; section < areas.length ; section++) {
-            //section is a 5x5 area of land
+            //section is a 3x3 area of land
             const width = 3 * SQUARELENGTH;
             const height = 3 * SQUARELENGTH;
             const [row, col] = areas[section]
@@ -434,7 +452,8 @@ class World extends Component {
                 let yard = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
                 yard.frame = new Rectangle(0, 67, 48, 48);
                 yard = new Sprite(yard);
-                yard.scale.set(2, 2);
+                yard.width = width;
+                yard.height = height;
                 yard.x = x;
                 yard.y = y;
                 this.pixiApp.stage.addChild(yard);
@@ -451,6 +470,119 @@ class World extends Component {
         return numSections;
     }
 
+    //fetches our map JSON file 
+    getMap() {
+        return fetch("/map", {
+            method: "GET",
+            mode: "no-cors",
+        }).then(result => result.json())
+          .then(data => {
+              this.map = data;
+          }).catch(ex => {
+              console.log("Error fetching map: ", ex);
+          })
+    }
+
+
+    renderMap(newLeftX, newLeftY, initial = false) {
+        //move the camera to give illusion of movement
+        // if (newLeftX === this.leftX && newLeftY === this.leftY && !initial) return;
+        const layers = this.map.layers;
+        //camera spans 10 tiles to right and down
+        const mapWidth = this.map.width;
+        const mapHeight = this.map.height;
+        if (!initial) {
+            // this.staticBackground.position.set(this.staticBackground.x - this.sprite.vx, this.staticBackground.y - this.sprite.vy);
+            // this.staticBackground.removeChildren();
+            // this.leftY = this.leftY - this.playerOffsetY;
+            // this.leftX = this.leftX - this.playerOffsetX;
+            // this.playerOffsetY = 0;
+            // this.playerOffsetX = 0;
+            this.staticBackground.position.set(this.staticBackground.x - this.sprite.vx, this.staticBackground.y - this.sprite.vy);
+            if (this.playerOffsetX !== 0) {
+                const incX = Math.floor(this.playerOffsetX / (Math.sign(this.playerOffsetX) * SQUARELENGTH));
+                if (incX !== 0) {
+                    this.staticBackground.removeChildren();
+                    const step = Math.floor(this.playerOffsetX / SQUARELENGTH); 
+                    if (step <= this.leftX) {
+                        this.leftX -= step;
+                    }
+                    this.playerOffsetX = 0;
+                    this.staticBackground.position.set(this.staticBackground.x / 2, this.staticBackground.y / 2);
+                    // console.log("refresh x: ", this.leftX);
+                }             
+            } 
+
+            
+            if (this.playerOffsetY !== 0) {
+                const incY = Math.floor(this.playerOffsetY / (Math.sign(this.playerOffsetY) * SQUARELENGTH));
+                if (incY !== 0) {
+                    this.staticBackground.removeChildren();
+                    const step = Math.floor(this.playerOffsetY / SQUARELENGTH);
+                    if (step <= this.leftY) {
+                        this.leftY -= step;
+                    }
+                    this.playerOffsetY = 0;
+                    this.staticBackground.position.set(this.staticBackground.x / 2, this.staticBackground.y / 2);
+                    console.log("refresh y: ", this.leftY);
+                }             
+            } 
+            if (this.playerOffsetX !== 0 && this.playerOffsetY !== 0) {
+                return ;
+            }
+        } else {
+            this.staticBackground.position.set(50, 35);
+            //set the pivot at the center where the sprite is located
+            this.staticBackground.pivot.set(this.staticBackground.width / 2, this.staticBackground.height / 2);
+        }
+        console.log("ran: ", this.leftX, this.leftY);
+        for (let layer = 0; layer < layers.length; layer++) {
+            const currLayerData = layers[layer].data;
+            //calculate exact window we need to iterate, since window is square
+            //but data is a 1D array, we will still encounter some elements outside window
+            //still a 4x improvement
+            const start = this.leftY * mapWidth + this.leftX;
+            const end = start + WINDOW_WIDTH + (WINDOW_HEIGHT * mapWidth) 
+            for (let i = start; i < end; i++) {
+                //position on our screen
+                //data is stored as one very long string, representing a 2D grid
+                //y and x are in terms of rows and cols of tiles not raw pixels
+                const y = i / mapHeight| 0;
+                const x = i % mapWidth | 0;
+                //choose tile
+                if (currLayerData[i] !== 0 && currLayerData[i] < 100) {
+                    //only continue if in window of map
+                    const yOffset = y - this.leftY;
+                    const xOffset = x - this.leftX
+                    //tile window is WINDOW_WIDTH x WINDOW_HEIGHT
+                    if (yOffset >= 0 && yOffset <= WINDOW_HEIGHT && xOffset >= 0 && xOffset <= WINDOW_WIDTH) {
+                        //elements are stored corresponding to sequential ids, that map back
+                        //to the tileset - 20 = # of tiles in each row in our tileset
+                        const tileRow = Math.floor(currLayerData[i] / 20);
+                        const tileCol = ((currLayerData[i] - 1) % 20);
+                        const sprite = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
+                        sprite.frame = new PIXI.Rectangle(tileCol * SQUARELENGTH, tileRow * SQUARELENGTH, SQUARELENGTH, SQUARELENGTH);
+                        const layer = new PIXI.Sprite(sprite);
+                        layer.x = xOffset * SQUARELENGTH;
+                        layer.y = yOffset * SQUARELENGTH;
+                        this.staticBackground.addChild(layer);
+                    }
+                }
+            }
+        }
+        this.pixiApp.renderer.render(this.pixiApp.stage);
+    }
+
+    loadMap() {
+        return this.getMap()
+            .then(() => {
+                this.renderMap(this.leftX, this.leftY, true);
+                this.pixiApp.stage.addChild(this.staticBackground);
+            }).catch(ex => {
+                console.log("Error loading map: ", ex);
+            });
+    }
+
     //populate the sections with our data
     loadSectionsWithData(numSections) {
         //make fetch API call, iterate through each result, for now hard-code
@@ -461,56 +593,65 @@ class World extends Component {
     }
     //initial set up called to render the main screen
     setup() {
-        let backgroundTexture = TextureCache["/static/img/rpg.png"];
+        this.loadMap()
+            .then(() => {
+                //Create the `tileset` sprite from the texture
+                let texture = TextureCache["/static/img/character.png"];
+                //Create a rectangle object that defines the position and
+                //size of the sub-image you want to extract from the texture
+                let rectangle = new Rectangle(0, 0, 32, 32);
+                //tell texture to only use that rectangle
+                texture.frame = rectangle;
+
+                //Create the sprite from the texture
+                //Sprite is how we interact with our thoughts!
+                this.sprite = new Sprite(texture);
+                //Position the sprite on the canvas
+                this.sprite.width = 16;
+                this.sprite.height = 16;
+                this.sprite.x = Math.floor(WIDTH / 4);//250;
+                this.sprite.y = Math.floor(HEIGHT / 4);
+                //Initialize velocities to 0 at start
+                this.sprite.vx = 0;
+                this.sprite.vy = 0;
+
+
+                //Add the sprite to the stage
+                this.pixiApp.stage.addChild(this.sprite);
+                console.log("sprite");
+
+                //Render the stage   
+                this.pixiApp.renderer.render(this.pixiApp.stage);
+
+                this.pixiApp.stage.scale.set(2, 2);
+
+                //Add our ticker or game loop
+                this.pixiApp.ticker.add(delta => this.gameLoop(delta));
+            });
         // let backgroundTexture = TextureCache["/static/img/rpg.png"];
-        // 71, 23, 32, 32- new grass
-        backgroundTexture.frame = new Rectangle(71, 23, 32, 32);
-        //Create and add background
-        this.overlay = new PIXI.TilingSprite(backgroundTexture, window.innerWidth - 40, window.innerHeight - 40);
-        // this.overlay = new Sprite(TextureCache["/static/img/overlay.png"])
-        this.pixiApp.stage.addChild(this.overlay);
+        // // let backgroundTexture = TextureCache["/static/img/rpg.png"];
+        // // 71, 23, 32, 32- new grass
+        // backgroundTexture.frame = new Rectangle(71, 23, 32, 32);
+        // //Create and add background
+        // this.overlay = new PIXI.TilingSprite(backgroundTexture, window.innerWidth - 40, window.innerHeight - 40);
+        // // this.overlay = new Sprite(TextureCache["/static/img/overlay.png"])
+        // this.pixiApp.stage.addChild(this.overlay);
 
-        //Create the `tileset` sprite from the texture
-        let texture = TextureCache["/static/img/character.png"];
-        //Create a rectangle object that defines the position and
-        //size of the sub-image you want to extract from the texture
-        let rectangle = new Rectangle(0, 0, 32, 32);
-        //tell texture to only use that rectangle
-        texture.frame = rectangle;
 
-        //create background container for objects we don't want our sprite to be able to 
-        //"move through"
-        this.staticBackground = new PIXI.Container();
-        this.loadHouse();
-        //TODO: do something to process from backend based on num sections - make an API
-        //call probably with the number of sections and have backend return JSON response
-        //with result = length of numSections
-        const numSections = this.generateSections();
-        this.loadSectionsWithData(numSections);
-        this.populateTrees();
-        this.populateBackground();
+        // //create background container for objects we don't want our sprite to be able to 
+        // //"move through"
+        // this.staticBackground = new PIXI.Container();
+        // this.loadHouse();
+        // //TODO: do something to process from backend based on num sections - make an API
+        // //call probably with the number of sections and have backend return JSON response
+        // //with result = length of numSections
+        // const numSections = this.generateSections();
+        // this.loadSectionsWithData(numSections);
+        // this.populateTrees();
+        // this.populateBackground();
 
-        //Create the sprite from the texture
-        //Sprite is how we interact with our thoughts!
-        this.sprite = new Sprite(texture);
-        //Position the sprite on the canvas
-        this.sprite.x = 0;//250;
-        this.sprite.y = 400;
-        //Initialize velocities to 0 at start
-        this.sprite.vx = 0;
-        this.sprite.vy = 0;
 
-        //Add static background container to the stage
-        this.pixiApp.stage.addChild(this.staticBackground);
 
-        //Add the sprite to the stage
-        this.pixiApp.stage.addChild(this.sprite);
-
-        //Render the stage   
-        this.pixiApp.renderer.render(this.pixiApp.stage);
-
-        //Add our ticker or game loop
-        this.pixiApp.ticker.add(delta => this.gameLoop(delta));
         //diplay our grid for debugging purposes
         // for (let row = 0; row < this.grid.length; row++) {
         //     for (let col = 0; col < this.grid[0].length; col++) {
@@ -546,7 +687,7 @@ class World extends Component {
                     this.sprite.vx = 0;
                     this.sprite.vy = 0;
                 } else {
-                    this.sprite.vy = -2;
+                    this.sprite.vy = -1 * STEP_SIZE;
                     this.sprite.vx = 0;
                     this.step = (this.step + 1) % 3;
                 }
@@ -559,7 +700,7 @@ class World extends Component {
                     this.sprite.vx = 0;
                     this.sprite.vy = 0;
                 } else {
-                    this.sprite.vy = 2;
+                    this.sprite.vy = STEP_SIZE;
                     this.sprite.vx = 0;
                     this.step = (this.step + 1) % 3;
                 }
@@ -572,7 +713,7 @@ class World extends Component {
                     this.sprite.vx = 0;
                     this.sprite.vy = 0;
                 } else {
-                    this.sprite.vx = -2;
+                    this.sprite.vx = -1 * STEP_SIZE;
                     this.sprite.vy = 0;
                     this.step = (this.step + 1) % 3;
                 }
@@ -585,7 +726,7 @@ class World extends Component {
                     this.sprite.vx = 0;
                     this.sprite.vy = 0;
                 } else {
-                    this.sprite.vx = 2;
+                    this.sprite.vx = STEP_SIZE;
                     this.sprite.vy = 0;
                     this.step = (this.step + 1) % 3;
                 }
@@ -610,8 +751,16 @@ class World extends Component {
     //handles updating the state of our game
     updateState(delta) {
         this.checkSpriteCollision();
-        this.sprite.x += this.sprite.vx;
-        this.sprite.y += this.sprite.vy;
+        //subtract from sprite velocity since background position coordinate should be set equal
+        //to the negative offset (moving forward should "pull the background back")
+        this.playerOffsetX -= this.sprite.vx;
+        this.playerOffsetY -= this.sprite.vy;
+        // console.log(this.playerOffsetX, this.playerOffsetY);
+        this.renderMap(this.leftX, this.leftY);
+        // this.staticBackground.x -= this.sprite.vx;
+        // this.staticBackground.y -= this.sprite.vy;
+        // this.sprite.x += this.sprite.vx;
+        // this.sprite.y += this.sprite.vy;
         this.sprite.texture.frame = this.walkingSteps[this.orientation][this.step];
     }
 

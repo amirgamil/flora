@@ -7,7 +7,7 @@ html, body {
     --bg: #eeecec; */
     font-family: 'Fira Sans', sans-serif;
     font-weight: 300;
-    background: #82AA28;
+    background: #222; /* #82AA28; */
     color: #222;
 }
 
@@ -52,6 +52,7 @@ footer {
 .gameContainer {
     align-self: center;
     justify-self: center;
+    overflow: none;
 }
 
 .textbox {
