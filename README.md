@@ -13,6 +13,7 @@ with current tileset
 
 - https://twitter.com/Goodlyay/status/1150910528056729601/photo/1
 - https://opengameart.org/content/classic-rpg-tileset
+- https://englercj.github.io/gl-tiled/_demo/basic/?map=maps%2Flttp%2Flightworld%2Flightworld.json
 
 ## How do we create the background?
 This one was tricky. If I wanted to have as much control over loading
@@ -28,6 +29,10 @@ To "beautify" the world in a systematic way which introduces some level of rando
 
 Main screen:
 - Sections with different key words in different corners of the screen, each keyword has some "trees" linking to different data (page 1)
+    - 7 "sections"
+        1. Just trees
+        2. Flowers
+        3. Farm land / vegetables
 - Click on any data source pulls up data (not in the canvas, in Poseidon) as a scroll with metadata about the data (link to it)
 - Other main page is for a specific data source (an article, note etc.) - main tree is in the middle of page
 - And links to all other related via other trees

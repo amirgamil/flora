@@ -52,6 +52,8 @@ class World extends Component {
         this.leftX = 10;
         this.leftY = 20;
         this.staticBackground = new PIXI.Container();
+        this.staticBackground.width = WIDTH;
+        this.staticBackground.height = HEIGHT;
         //global sprite offsets to help render the map as the camera moves
         this.playerOffsetX = 0;
         this.playerOffsetY = 0;
@@ -77,6 +79,10 @@ class World extends Component {
         this.getMap = this.getMap.bind(this);
         this.loadMap = this.loadMap.bind(this);
         this.renderMap = this.renderMap.bind(this);
+        this.player = {
+            x: 0,
+            y: 0
+        }
         //2D array representing the "pixel chunks" on the board
         //each item holds a reference to the sprite at that pixel chunk - if group, will hold container
         //if "pixel chunk" is empty, it will just hold null
@@ -484,56 +490,50 @@ class World extends Component {
     }
 
 
-    renderMap(newLeftX, newLeftY, initial = false) {
+    //TODO: make more efficient, only load bit outside window, not entire view
+    renderMap(initial = false) {
         //move the camera to give illusion of movement
         // if (newLeftX === this.leftX && newLeftY === this.leftY && !initial) return;
         const layers = this.map.layers;
         //camera spans 10 tiles to right and down
         const mapWidth = this.map.width;
         const mapHeight = this.map.height;
+        var updateMap = initial;
         if (!initial) {
-            // this.staticBackground.position.set(this.staticBackground.x - this.sprite.vx, this.staticBackground.y - this.sprite.vy);
-            // this.staticBackground.removeChildren();
-            // this.leftY = this.leftY - this.playerOffsetY;
-            // this.leftX = this.leftX - this.playerOffsetX;
-            // this.playerOffsetY = 0;
-            // this.playerOffsetX = 0;
-            this.staticBackground.position.set(this.staticBackground.x - this.sprite.vx, this.staticBackground.y - this.sprite.vy);
+            // this.staticBackground.position.set(this.sprite.x, this.sprite.y);
             if (this.playerOffsetX !== 0) {
-                const incX = Math.floor(this.playerOffsetX / (Math.sign(this.playerOffsetX) * SQUARELENGTH));
-                if (incX !== 0) {
+                if (this.playerOffsetX % SQUARELENGTH === 0) {
                     this.staticBackground.removeChildren();
-                    const step = Math.floor(this.playerOffsetX / SQUARELENGTH); 
-                    if (step <= this.leftX) {
-                        this.leftX -= step;
+                    const step = Math.floor(this.playerOffsetX / SQUARELENGTH);
+                    this.leftX -= step;
+                    if (this.leftX <= 0) {
+                        this.leftX = 0;
                     }
-                    this.playerOffsetX = 0;
-                    this.staticBackground.position.set(this.staticBackground.x / 2, this.staticBackground.y / 2);
-                    // console.log("refresh x: ", this.leftX);
-                }             
+                    this.playerOffsetX = this.sprite.width / 2;
+                    updateMap = true;
+                }
             } 
-
-            
             if (this.playerOffsetY !== 0) {
-                const incY = Math.floor(this.playerOffsetY / (Math.sign(this.playerOffsetY) * SQUARELENGTH));
-                if (incY !== 0) {
+                if (this.playerOffsetY % SQUARELENGTH === 0) {
                     this.staticBackground.removeChildren();
+                    //TODO: fix this
                     const step = Math.floor(this.playerOffsetY / SQUARELENGTH);
-                    if (step <= this.leftY) {
-                        this.leftY -= step;
+                    this.leftY -= step;
+                    console.log("step: ", step," new y:", this.leftY);
+                    if (this.leftY <= 0) {
+                        this.leftY = 0;
                     }
-                    this.playerOffsetY = 0;
-                    this.staticBackground.position.set(this.staticBackground.x / 2, this.staticBackground.y / 2);
+                    this.playerOffsetY = this.sprite.height / 2;
+                    updateMap = true;
                     console.log("refresh y: ", this.leftY);
                 }             
             } 
-            if (this.playerOffsetX !== 0 && this.playerOffsetY !== 0) {
+
+            if (!updateMap) {
                 return ;
             }
         } else {
-            this.staticBackground.position.set(50, 35);
-            //set the pivot at the center where the sprite is located
-            this.staticBackground.pivot.set(this.staticBackground.width / 2, this.staticBackground.height / 2);
+            this.staticBackground.position.set(0, 0);
         }
         console.log("ran: ", this.leftX, this.leftY);
         for (let layer = 0; layer < layers.length; layer++) {
@@ -541,8 +541,9 @@ class World extends Component {
             //calculate exact window we need to iterate, since window is square
             //but data is a 1D array, we will still encounter some elements outside window
             //still a 4x improvement
-            const start = this.leftY * mapWidth + this.leftX;
-            const end = start + WINDOW_WIDTH + (WINDOW_HEIGHT * mapWidth) 
+            const start = (this.leftY * mapWidth - 1) + this.leftX;
+            const end = start + WINDOW_WIDTH + (WINDOW_HEIGHT * mapWidth) + 1;
+            console.log(this.leftX, this.leftY, start, end, currLayerData.length);
             for (let i = start; i < end; i++) {
                 //position on our screen
                 //data is stored as one very long string, representing a 2D grid
@@ -555,7 +556,7 @@ class World extends Component {
                     const yOffset = y - this.leftY;
                     const xOffset = x - this.leftX
                     //tile window is WINDOW_WIDTH x WINDOW_HEIGHT
-                    if (yOffset >= 0 && yOffset <= WINDOW_HEIGHT && xOffset >= 0 && xOffset <= WINDOW_WIDTH) {
+                    if (yOffset >= -5 && yOffset <= WINDOW_HEIGHT + 5 && xOffset >= -5 && xOffset <= WINDOW_WIDTH + 5) {
                         //elements are stored corresponding to sequential ids, that map back
                         //to the tileset - 20 = # of tiles in each row in our tileset
                         const tileRow = Math.floor(currLayerData[i] / 20);
@@ -570,13 +571,13 @@ class World extends Component {
                 }
             }
         }
-        this.pixiApp.renderer.render(this.pixiApp.stage);
     }
 
     loadMap() {
         return this.getMap()
             .then(() => {
-                this.renderMap(this.leftX, this.leftY, true);
+                this.tileTextures 
+                this.renderMap(true);
                 this.pixiApp.stage.addChild(this.staticBackground);
             }).catch(ex => {
                 console.log("Error loading map: ", ex);
@@ -609,8 +610,11 @@ class World extends Component {
                 //Position the sprite on the canvas
                 this.sprite.width = 16;
                 this.sprite.height = 16;
-                this.sprite.x = Math.floor(WIDTH / 4);//250;
+                this.sprite.x = Math.floor(WIDTH / 4);
                 this.sprite.y = Math.floor(HEIGHT / 4);
+                //all offsets need to include half of the sprite's respective dimensions
+                this.playerOffsetX = this.sprite.width / 2;
+                this.playerOffsetY = this.sprite.height / 2;
                 //Initialize velocities to 0 at start
                 this.sprite.vx = 0;
                 this.sprite.vy = 0;
@@ -756,11 +760,17 @@ class World extends Component {
         this.playerOffsetX -= this.sprite.vx;
         this.playerOffsetY -= this.sprite.vy;
         // console.log(this.playerOffsetX, this.playerOffsetY);
-        this.renderMap(this.leftX, this.leftY);
-        // this.staticBackground.x -= this.sprite.vx;
-        // this.staticBackground.y -= this.sprite.vy;
-        // this.sprite.x += this.sprite.vx;
-        // this.sprite.y += this.sprite.vy;
+        this.renderMap();
+        // if (this.sprite.vx || this.sprite.vy) {
+        //     console.log(this.sprite.vx, this.sprite.vy);
+        // }
+        //make it look like the player is moving by moving the background
+        this.player.x += this.sprite.vx;
+        this.player.y += this.sprite.vy;
+        this.staticBackground.pivot.set(-1 * this.playerOffsetX, -1 * this.playerOffsetY);
+        // if (this.sprite.vx > 0) {
+        //     this.staticBackground.pivot.set(this.player.x - offsetX, this.player.y);
+        // } 
         this.sprite.texture.frame = this.walkingSteps[this.orientation][this.step];
     }
 
