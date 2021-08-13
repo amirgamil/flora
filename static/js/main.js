@@ -2,7 +2,8 @@
 let Application = PIXI.Application,
     Sprite = PIXI.Sprite,
     TextureCache = PIXI.utils.TextureCache,
-    Rectangle = PIXI.Rectangle;
+    Rectangle = PIXI.Rectangle,
+    Resources = PIXI.Loader.resources;
 
 //chosen based on ~ size of our trees    
 const SQUARELENGTH = 16;
@@ -28,8 +29,8 @@ const BACKGROUND_ITEM = "Background_Item";
 const WIDTH = 800;
 const HEIGHT = 640;
 //size of moving window
-const WINDOW_WIDTH = 25;
-const WINDOW_HEIGHT = 20;
+const WINDOW_WIDTH = 100;
+const WINDOW_HEIGHT = 100;
 
 function getRandomArbitrary(min, max) {
     min = Math.ceil(min);
@@ -51,9 +52,6 @@ class World extends Component {
         );
         this.leftX = 10;
         this.leftY = 20;
-        this.staticBackground = new PIXI.Container();
-        this.staticBackground.width = WIDTH;
-        this.staticBackground.height = HEIGHT;
         //global sprite offsets to help render the map as the camera moves
         this.playerOffsetX = 0;
         this.playerOffsetY = 0;
@@ -108,6 +106,7 @@ class World extends Component {
               .add("/static/img/rock.png")
               .add("/static/img/farmRatio.png")
               .add("/static/img/cliff.png")
+              .add("/assets/tileset.json")
               .load(this.setup);
         for (let i = 0; i < this.maxRows; i++) {
             this.grid[i] = [];
@@ -528,7 +527,9 @@ class World extends Component {
                     console.log("refresh y: ", this.leftY);
                 }             
             } 
-
+            var groundOffsetX = this.player.x % SQUARELENGTH; // Number of sprite tiles on x axis
+            var groundOffsetY = this.player.y % SQUARELENGTH; // Number of sprite tiles on y axis
+            return;
             if (!updateMap) {
                 return ;
             }
@@ -536,6 +537,8 @@ class World extends Component {
             this.staticBackground.position.set(0, 0);
         }
         console.log("ran: ", this.leftX, this.leftY);
+        var smtX = 0;//(WIDTH/ 2 - 24);
+        var smtY = 0;//(HEIGHT/ 2 - 24);
         for (let layer = 0; layer < layers.length; layer++) {
             const currLayerData = layers[layer].data;
             //calculate exact window we need to iterate, since window is square
@@ -543,40 +546,51 @@ class World extends Component {
             //still a 4x improvement
             const start = (this.leftY * mapWidth - 1) + this.leftX;
             const end = start + WINDOW_WIDTH + (WINDOW_HEIGHT * mapWidth) + 1;
-            console.log(this.leftX, this.leftY, start, end, currLayerData.length);
-            for (let i = start; i < end; i++) {
+            for (let i = 0; i < currLayerData.length; i++) {
                 //position on our screen
                 //data is stored as one very long string, representing a 2D grid
                 //y and x are in terms of rows and cols of tiles not raw pixels
                 const y = i / mapHeight| 0;
                 const x = i % mapWidth | 0;
-                //choose tile
+                //choose tile, TODO: fix this
                 if (currLayerData[i] !== 0 && currLayerData[i] < 100) {
                     //only continue if in window of map
                     const yOffset = y - this.leftY;
                     const xOffset = x - this.leftX
+                    const tileRow = Math.floor(currLayerData[i] / 20);
+                    const tileCol = ((currLayerData[i] - 1) % 20);
+                    // const sprite = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
+                    // sprite.frame = new PIXI.Rectangle(tileCol * SQUARELENGTH, tileRow * SQUARELENGTH, SQUARELENGTH, SQUARELENGTH);
+                    // const layer = new PIXI.Sprite(sprite);
+                    const xCoord = xOffset * SQUARELENGTH;
+                    const yCoord = yOffset * SQUARELENGTH;
+                    // this.staticBackground.addChild(layer);
+                    this.staticBackground.tile(TextureCache["/static/img/rpg.png"], xCoord, yCoord, 
+                                                {u: tileCol * SQUARELENGTH, v: tileRow * SQUARELENGTH,
+                                                tileWidth: SQUARELENGTH, tileHeight: SQUARELENGTH});
+                    // console.log(xOffset, yOffset);
                     //tile window is WINDOW_WIDTH x WINDOW_HEIGHT
-                    if (yOffset >= -5 && yOffset <= WINDOW_HEIGHT + 5 && xOffset >= -5 && xOffset <= WINDOW_WIDTH + 5) {
-                        //elements are stored corresponding to sequential ids, that map back
-                        //to the tileset - 20 = # of tiles in each row in our tileset
-                        const tileRow = Math.floor(currLayerData[i] / 20);
-                        const tileCol = ((currLayerData[i] - 1) % 20);
-                        const sprite = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
-                        sprite.frame = new PIXI.Rectangle(tileCol * SQUARELENGTH, tileRow * SQUARELENGTH, SQUARELENGTH, SQUARELENGTH);
-                        const layer = new PIXI.Sprite(sprite);
-                        layer.x = xOffset * SQUARELENGTH;
-                        layer.y = yOffset * SQUARELENGTH;
-                        this.staticBackground.addChild(layer);
-                    }
+                    //don't do any culling by default, but the code is left like this in case
+                    //I want to revisit it and try after failing to make it work correctly
+                    // if (yOffset >= 0 && yOffset <= WINDOW_HEIGHT && xOffset >= 0 && xOffset <= WINDOW_WIDTH) {
+                    // }
                 }
             }
         }
     }
 
+    //creates a map of [row, col] to a associated Texture instead of creating a new texture
+    //for every tile
+    loadTextures() {
+
+    }
+
     loadMap() {
         return this.getMap()
             .then(() => {
-                this.tileTextures 
+                this.staticBackground = new PIXI.tilemap.Tilemap(TextureCache["/static/img/rpg.png"]);
+                this.staticBackground.width = WIDTH;
+                this.staticBackground.height = HEIGHT;
                 this.renderMap(true);
                 this.pixiApp.stage.addChild(this.staticBackground);
             }).catch(ex => {
@@ -767,7 +781,7 @@ class World extends Component {
         //make it look like the player is moving by moving the background
         this.player.x += this.sprite.vx;
         this.player.y += this.sprite.vy;
-        this.staticBackground.pivot.set(-1 * this.playerOffsetX, -1 * this.playerOffsetY);
+        this.staticBackground.pivot.set(this.player.x, this.player.y);
         // if (this.sprite.vx > 0) {
         //     this.staticBackground.pivot.set(this.player.x - offsetX, this.player.y);
         // } 
