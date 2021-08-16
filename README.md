@@ -15,6 +15,14 @@ with current tileset
 - https://opengameart.org/content/classic-rpg-tileset
 - https://englercj.github.io/gl-tiled/_demo/basic/?map=maps%2Flttp%2Flightworld%2Flightworld.json
 
+
+## Nuance in the grid
+Want to use math.ceil since anywhere inside a box will be a decimal of the last box, but need to access the associated value in the grid 
+note operation is important here, we need to ceil the operation 
+becuase our grid is in whole integer increments but for precision, we
+col/row tiles return a decimal value => for example, if we have 
+grid [a, b] if the sprite is halfway into b, pixel value will be that of a + some decimal
+
 ## How do we create the background?
 This one was tricky. If I wanted to have as much control over loading
 "the graph" dynamically depending on the information, I couldn't purely go with

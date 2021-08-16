@@ -13,7 +13,8 @@ const NUM_WELLS = 2;
 const NUM_LAKE = 20;
 const NUM_EMPTY_SPACE = 10;
 const NUM_GRASS = 50;
-
+//number of tiles in one row according to the .png tileset
+const NUM_COL_TILES = 22;
 const STEP_SIZE = 1;
 
 //some unique identifiers we assign to our Sprites for easier collision detection and other stuff
@@ -26,8 +27,8 @@ const STOP_ITEM = "Stop_Item"
 const BACKGROUND_ITEM = "Background_Item";
 
 //size of displayed screen
-const WIDTH = 800;
-const HEIGHT = 640;
+const WIDTH = 640;
+const HEIGHT = 480;
 //size of moving window
 const WINDOW_WIDTH = 100;
 const WINDOW_HEIGHT = 100;
@@ -43,18 +44,19 @@ class World extends Component {
     init() {
         //create the Pixi application
         this.pixiApp = new PIXI.Application({ 
-            width: WIDTH,//window.innerWidth - 40,         // default: 800
-            height: HEIGHT,//window.innerHeight - 40,        // default: 600
+            width: WIDTH,
+            height: HEIGHT,
             antialias: true,    // default: false
             transparent: true, // default: false
             resolution: 1       // default: 1
           }
         );
-        this.leftX = 10;
-        this.leftY = 20;
+        this.leftX = 44;
+        this.leftY = 41;
         //global sprite offsets to help render the map as the camera moves
         this.playerOffsetX = 0;
         this.playerOffsetY = 0;
+        //use this as a lot so calculate it once
         this.setup = this.setup.bind(this);
         this.gameLoop = this.gameLoop.bind(this);
         this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -77,6 +79,9 @@ class World extends Component {
         this.getMap = this.getMap.bind(this);
         this.loadMap = this.loadMap.bind(this);
         this.renderMap = this.renderMap.bind(this);
+        this.initGrid = this.initGrid.bind(this);
+        this.getSpriteRowCol = this.getSpriteRowCol.bind(this);
+        this.shouldSpriteStop = this.shouldSpriteStop.bind(this);
         this.player = {
             x: 0,
             y: 0
@@ -87,10 +92,6 @@ class World extends Component {
         this.grid = [] 
         //loop through intervals of `SQUARELENGTH` for each of the rows
         //add padding to account for gaps between cells so that game canvas does not stretch beyond full screen
-        this.maxRows = Math.floor(this.pixiApp.renderer.height / (SQUARELENGTH));
-        this.maxCols= Math.floor(this.pixiApp.renderer.width / (SQUARELENGTH));
-        console.log("rows: ", this.maxRows);
-        console.log("cols: ", this.maxCols);
         window.addEventListener("keydown", this.handleKeyDown);
         window.addEventListener("keyup", this.handleKeyUp);
         this.pixiApp.loader
@@ -108,13 +109,6 @@ class World extends Component {
               .add("/static/img/cliff.png")
               .add("/assets/tileset.json")
               .load(this.setup);
-        for (let i = 0; i < this.maxRows; i++) {
-            this.grid[i] = [];
-            for (let j = 0; j < this.maxCols; j++) {
-                //initalize all pixel chunks initially to null
-                this.grid[i][j] = null;
-            }
-        }
         //0 represents up, 1 is right, 2 is down, 3 is left
         //old 32x32
         this.walkingSteps = {0: [new Rectangle(192, 0, 32, 32), new Rectangle(224, 0, 32, 32), new Rectangle(256, 0, 32, 32)],
@@ -127,6 +121,17 @@ class World extends Component {
         this.orientation = 2;
         this.step = 0;
     } 
+
+
+    initGrid() {
+        for (let i = 0; i < this.maxRows; i++) {
+            this.grid[i] = [];
+            for (let j = 0; j < this.maxCols; j++) {
+                //initalize all pixel chunks initially to null
+                this.grid[i][j] = null;
+            }
+        }
+    }
 
     loadTextureWithFrame(x, y, textureCacheURL, ID, frame, container = this.pixiApp.stage) {
         let sprite = this.loadTexture(x, y, textureCacheURL, ID, container);
@@ -153,23 +158,36 @@ class World extends Component {
         return false;
     }
 
+    shouldSpriteStop(row, col) {
+        if (this.outOfBounds(row, col) || (this.grid[row][col] && this.grid[row][col].identifier === STOP_ITEM)) {
+            return true;
+        }
+        return false;
+    }
+
+
+    //helper method which gets the row and col (in terms of tiles of the map so 0...99)
+    getSpriteRowCol() {
+        //adjust row, col tile of current sprite
+        this.playerColTile -= this.playerOffsetX / SQUARELENGTH;
+        this.playerRowTile -= this.playerOffsetY / SQUARELENGTH;
+        //reset playerOffset back to default
+        this.playerOffsetX = 0;
+        this.playerOffsetY = 0;
+        return [this.playerColTile, this.playerRowTile];
+    }
+
     //checks for a collision with our main sprite
     checkSpriteCollision() {
-        //calculate the x and y offset coordinates
-        const xOffset = this.sprite.x;
-        const yOffset = this.sprite.y; 
-
-        //get center of sprite
-        const centerX = this.sprite.x + this.sprite.width / 2;
-        const centerY = this.sprite.y + this.sprite.height / 2;
-        
-        //calculate their position relative to our grid
-        const row = Math.floor(centerY / SQUARELENGTH);
-
-        const col = Math.floor(centerX / SQUARELENGTH);
-
+        let [origCol, origRow] = this.getSpriteRowCol();
+        //get center of row, col
+        let row = origRow + this.spriteHalfHeight;
+        let col = origCol + this.spriteHalfWidth;
         //CODE TO HANDLE ALL OTHER COLLISIONS
         if (!this.outOfBounds(row, col)) {
+            row = Math.round(row);
+            col = Math.round(col);
+            // console.log(col, row);
             if (this.grid[row][col]) {
                 const item = this.grid[row][col];
                 if (item.identifier === TREE) {
@@ -196,18 +214,18 @@ class World extends Component {
             //orientation is 0 north and increments 1 clockwise, so if
             //orientation is 1, nextStep should be positive
             const nextStep = this.orientation === 1 ? 1 : -1;
-            const nextCol = Math.floor((centerX + nextStep * 15) / SQUARELENGTH);
-            if (this.outOfBounds(row, nextCol) || (this.grid[row][nextCol] && this.grid[row][nextCol].identifier === STOP_ITEM)) {
-                //prevent movement in the current direction
-                console.log("stopping speed in col:  ", row, nextCol);
+            //note operation is important here, we need to ceil the operation 
+            //becuase our grid is in whole integer increments but for precision, we
+            //col/row tiles return a decimal value => for example, if we have 
+            //grid [a, b] if the sprite is halfway into b, pixel value will be that of a + some decimal
+            let nextCol = Math.ceil(origCol + 0.5 * nextStep * this.spriteHalfWidth);
+            if (this.shouldSpriteStop(row, nextCol)) {
                 this.sprite.vx = 0;
             }
         } else {
             const nextStep = this.orientation === 2 ? 1 : -1;
-            const nextRow = Math.floor((centerY + nextStep * 15) / SQUARELENGTH);
-            if (this.outOfBounds(nextRow, col) || (this.grid[nextRow][col] && this.grid[nextRow][col].identifier === STOP_ITEM)) {
-                //prevent movement in the current direction
-                console.log("stopping speed in row: ", nextRow, col);
+            let nextRow = Math.ceil(origRow + 0.5 * nextStep * this.spriteHalfHeight)
+            if (this.shouldSpriteStop(nextRow, col)) {
                 this.sprite.vy = 0;
             }
         }
@@ -482,7 +500,14 @@ class World extends Component {
             mode: "no-cors",
         }).then(result => result.json())
           .then(data => {
-              this.map = data;
+              this.map = data.map;
+              this.maxRows = this.map.height;
+              this.maxCols = this.map.width;
+              this.initGrid();
+              this.tileset = {};
+              data.tileset.tiles.map((currTile, _) => {
+                  this.tileset[currTile.id] = currTile.properties[0];
+              });
           }).catch(ex => {
               console.log("Error fetching map: ", ex);
           })
@@ -492,53 +517,10 @@ class World extends Component {
     //TODO: make more efficient, only load bit outside window, not entire view
     renderMap(initial = false) {
         //move the camera to give illusion of movement
-        // if (newLeftX === this.leftX && newLeftY === this.leftY && !initial) return;
         const layers = this.map.layers;
-        //camera spans 10 tiles to right and down
         const mapWidth = this.map.width;
         const mapHeight = this.map.height;
-        var updateMap = initial;
-        if (!initial) {
-            // this.staticBackground.position.set(this.sprite.x, this.sprite.y);
-            if (this.playerOffsetX !== 0) {
-                if (this.playerOffsetX % SQUARELENGTH === 0) {
-                    this.staticBackground.removeChildren();
-                    const step = Math.floor(this.playerOffsetX / SQUARELENGTH);
-                    this.leftX -= step;
-                    if (this.leftX <= 0) {
-                        this.leftX = 0;
-                    }
-                    this.playerOffsetX = this.sprite.width / 2;
-                    updateMap = true;
-                }
-            } 
-            if (this.playerOffsetY !== 0) {
-                if (this.playerOffsetY % SQUARELENGTH === 0) {
-                    this.staticBackground.removeChildren();
-                    //TODO: fix this
-                    const step = Math.floor(this.playerOffsetY / SQUARELENGTH);
-                    this.leftY -= step;
-                    console.log("step: ", step," new y:", this.leftY);
-                    if (this.leftY <= 0) {
-                        this.leftY = 0;
-                    }
-                    this.playerOffsetY = this.sprite.height / 2;
-                    updateMap = true;
-                    console.log("refresh y: ", this.leftY);
-                }             
-            } 
-            var groundOffsetX = this.player.x % SQUARELENGTH; // Number of sprite tiles on x axis
-            var groundOffsetY = this.player.y % SQUARELENGTH; // Number of sprite tiles on y axis
-            return;
-            if (!updateMap) {
-                return ;
-            }
-        } else {
-            this.staticBackground.position.set(0, 0);
-        }
-        console.log("ran: ", this.leftX, this.leftY);
-        var smtX = 0;//(WIDTH/ 2 - 24);
-        var smtY = 0;//(HEIGHT/ 2 - 24);
+        this.staticBackground.position.set(0, 0);
         for (let layer = 0; layer < layers.length; layer++) {
             const currLayerData = layers[layer].data;
             //calculate exact window we need to iterate, since window is square
@@ -553,12 +535,14 @@ class World extends Component {
                 const y = i / mapHeight| 0;
                 const x = i % mapWidth | 0;
                 //choose tile, TODO: fix this
-                if (currLayerData[i] !== 0 && currLayerData[i] < 100) {
+                if (currLayerData[i] !== 0) {
                     //only continue if in window of map
                     const yOffset = y - this.leftY;
                     const xOffset = x - this.leftX
-                    const tileRow = Math.floor(currLayerData[i] / 20);
-                    const tileCol = ((currLayerData[i] - 1) % 20);
+                    //subtract 1 since 0 is empty in exported json map, and we want to 0-index
+                    const zeroIndexedID = currLayerData[i] - 1;
+                    const tileRow = Math.floor(zeroIndexedID / NUM_COL_TILES);
+                    const tileCol = (zeroIndexedID % NUM_COL_TILES);
                     // const sprite = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
                     // sprite.frame = new PIXI.Rectangle(tileCol * SQUARELENGTH, tileRow * SQUARELENGTH, SQUARELENGTH, SQUARELENGTH);
                     // const layer = new PIXI.Sprite(sprite);
@@ -568,8 +552,11 @@ class World extends Component {
                     this.staticBackground.tile(TextureCache["/static/img/rpg.png"], xCoord, yCoord, 
                                                 {u: tileCol * SQUARELENGTH, v: tileRow * SQUARELENGTH,
                                                 tileWidth: SQUARELENGTH, tileHeight: SQUARELENGTH});
-                    // console.log(xOffset, yOffset);
-                    //tile window is WINDOW_WIDTH x WINDOW_HEIGHT
+                    
+                    //only care about the highest level non-zero tile across layers
+                    //note we don't need the reference to any tile we statically load from background
+                    //TODO - not true? what about water?
+                    this.grid[y][x] = {identifier: this.tileset[zeroIndexedID].value}; 
                     //don't do any culling by default, but the code is left like this in case
                     //I want to revisit it and try after failing to make it work correctly
                     // if (yOffset >= 0 && yOffset <= WINDOW_HEIGHT && xOffset >= 0 && xOffset <= WINDOW_WIDTH) {
@@ -577,12 +564,6 @@ class World extends Component {
                 }
             }
         }
-    }
-
-    //creates a map of [row, col] to a associated Texture instead of creating a new texture
-    //for every tile
-    loadTextures() {
-
     }
 
     loadMap() {
@@ -624,9 +605,14 @@ class World extends Component {
                 //Position the sprite on the canvas
                 this.sprite.width = 16;
                 this.sprite.height = 16;
-                this.sprite.x = Math.floor(WIDTH / 4);
-                this.sprite.y = Math.floor(HEIGHT / 4);
-                //all offsets need to include half of the sprite's respective dimensions
+                //TODO: figure out
+                this.sprite.x = 160;
+                this.sprite.y = 144;
+                //use this as a lot so calculate it once
+                this.spriteHalfWidth = this.sprite.width / 2 / SQUARELENGTH;
+                this.spriteHalfHeight = this.sprite.height / 2 / SQUARELENGTH;
+                this.playerColTile = this.leftX + Math.floor((this.sprite.x / SQUARELENGTH) + this.spriteHalfWidth);
+                this.playerRowTile = this.leftY + Math.floor((this.sprite.y / SQUARELENGTH) + this.spriteHalfHeight);
                 this.playerOffsetX = this.sprite.width / 2;
                 this.playerOffsetY = this.sprite.height / 2;
                 //Initialize velocities to 0 at start
@@ -643,54 +629,37 @@ class World extends Component {
 
                 this.pixiApp.stage.scale.set(2, 2);
 
+
+                //diplay our grid for debugging purposes
+                // for (let row = 0; row < this.grid.length; row++) {
+                //     for (let col = 0; col < this.grid[0].length; col++) {
+                //         if (this.grid[row][col]) {
+                //             const y = row - this.leftY;
+                //             const x = col - this.leftX;
+                //             const xCoord = x * SQUARELENGTH;
+                //             const yCoord = y * SQUARELENGTH; 
+                //             var graphics = new PIXI.Graphics();
+                //             //set background as transparent to see original map
+                //             graphics.beginFill(0, 0.1);
+                //             if (this.grid[row][col] && this.grid[row][col].identifier === STOP_ITEM) {
+                //                 graphics.lineStyle(1, 0xFF0000);
+                //             } else {
+                //                 graphics.lineStyle(1, 0x00ffff);
+                //             }
+
+                //             // draw a rectangle
+                //             //remember col = x coordinate, and row corresponds to y coordinate
+                //             graphics.drawRect(xCoord, yCoord, SQUARELENGTH, SQUARELENGTH);
+
+                //             this.pixiApp.stage.addChild(graphics);
+                //         }
+                //     }
+                // }
+
                 //Add our ticker or game loop
                 this.pixiApp.ticker.add(delta => this.gameLoop(delta));
             });
-        // let backgroundTexture = TextureCache["/static/img/rpg.png"];
-        // // let backgroundTexture = TextureCache["/static/img/rpg.png"];
-        // // 71, 23, 32, 32- new grass
-        // backgroundTexture.frame = new Rectangle(71, 23, 32, 32);
-        // //Create and add background
-        // this.overlay = new PIXI.TilingSprite(backgroundTexture, window.innerWidth - 40, window.innerHeight - 40);
-        // // this.overlay = new Sprite(TextureCache["/static/img/overlay.png"])
-        // this.pixiApp.stage.addChild(this.overlay);
 
-
-        // //create background container for objects we don't want our sprite to be able to 
-        // //"move through"
-        // this.staticBackground = new PIXI.Container();
-        // this.loadHouse();
-        // //TODO: do something to process from backend based on num sections - make an API
-        // //call probably with the number of sections and have backend return JSON response
-        // //with result = length of numSections
-        // const numSections = this.generateSections();
-        // this.loadSectionsWithData(numSections);
-        // this.populateTrees();
-        // this.populateBackground();
-
-
-
-        //diplay our grid for debugging purposes
-        // for (let row = 0; row < this.grid.length; row++) {
-        //     for (let col = 0; col < this.grid[0].length; col++) {
-        //         if (this.grid[row][col]) {
-        //             var graphics = new PIXI.Graphics();
-        //             //set background as transparent to see original map
-        //             graphics.beginFill(0, 0.1);
-        //             if (this.grid[row][col] && this.grid[row][col].identifier === STOP_ITEM) {
-        //                 graphics.lineStyle(1, 0xFF0000);
-        //             } else {
-        //                 graphics.lineStyle(1, 0x00ffff);
-        //             }
-
-        //             // draw a rectangle
-        //             //remember col = x coordinate, and row corresponds to y coordinate
-        //             graphics.drawRect(col * SQUARELENGTH, row * SQUARELENGTH, SQUARELENGTH, SQUARELENGTH);
-
-        //             this.pixiApp.stage.addChild(graphics);
-        //         }
-        //     }
-        // }
     }
 
     handleKeyDown(evt) {
@@ -749,6 +718,10 @@ class World extends Component {
                     this.step = (this.step + 1) % 3;
                 }
                 break
+            case " ":
+            case "Spacebar":
+                console.log(this.getSpriteRowCol());
+                break;
         }
     }
 
@@ -773,11 +746,7 @@ class World extends Component {
         //to the negative offset (moving forward should "pull the background back")
         this.playerOffsetX -= this.sprite.vx;
         this.playerOffsetY -= this.sprite.vy;
-        // console.log(this.playerOffsetX, this.playerOffsetY);
-        this.renderMap();
-        // if (this.sprite.vx || this.sprite.vy) {
-        //     console.log(this.sprite.vx, this.sprite.vy);
-        // }
+        // this.renderMap();
         //make it look like the player is moving by moving the background
         this.player.x += this.sprite.vx;
         this.player.y += this.sprite.vy;

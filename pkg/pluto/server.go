@@ -29,22 +29,43 @@ func index(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, indexFile)
 }
 
-func loadMap(w http.ResponseWriter, r *http.Request) {
-	mapFile, err := os.Open("./map.json")
-	w.Header().Set("Content-Type", "application/json")
+func loadJSONFile(path string) (map[string]interface{}, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		return nil, err
 	}
-	data, errReading := ioutil.ReadAll(mapFile)
+	data, errReading := ioutil.ReadAll(file)
 	if errReading != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		return nil, errReading
 	}
 
 	var jsonData map[string]interface{}
 	if err := json.Unmarshal(data, &jsonData); err != nil {
+		return nil, err
+	}
+
+	return jsonData, nil
+}
+
+func loadMap(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	mapData, err := loadJSONFile("./map.json")
+	if err != nil {
+		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 	}
-	json.NewEncoder(w).Encode(jsonData)
+	tileData, errTileset := loadJSONFile("./tileset.json")
+	if errTileset != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
+	}
+
+	type Data struct {
+		Map     map[string]interface{} `json:"map"`
+		Tileset map[string]interface{} `json:"tileset"`
+	}
+
+	json.NewEncoder(w).Encode(Data{Map: mapData, Tileset: tileData})
 }
 
 func Start() {
