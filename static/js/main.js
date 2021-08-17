@@ -51,6 +51,8 @@ class World extends Component {
             resolution: 1       // default: 1
           }
         );
+        this.pixiApp.renderer.view.style.margin = "0 auto";
+        this.pixiApp.renderer.view.display = "block";
         this.leftX = 44;
         this.leftY = 41;
         //global sprite offsets to help render the map as the camera moves
@@ -62,19 +64,11 @@ class World extends Component {
         this.handleKeyDown = this.handleKeyDown.bind(this);
         this.handleKeyUp = this.handleKeyUp.bind(this);
         this.updateState = this.updateState.bind(this);
-        this.loadDecor = this.loadDecor.bind(this);
-        this.populateTrees = this.populateTrees.bind(this);
         this.outOfBounds = this.outOfBounds.bind(this);
-        this.populateBackground = this.populateBackground.bind(this);
-        this.addObjectsToBackground = this.addObjectsToBackground.bind(this);
-        this.addStaticObject = this.addStaticObject.bind(this);
         this.fillInGrid = this.fillInGrid.bind(this);
-        this.loadHouse = this.loadHouse.bind(this);
         this.generateSections = this.generateSections.bind(this);
         this.checkSpriteCollision = this.checkSpriteCollision.bind(this);
-        this.loadTextureWithFrame = this.loadTextureWithFrame.bind(this);
         this.loadTexture = this.loadTexture.bind(this);
-        this.loadPathToSection = this.loadPathToSection.bind(this);
         this.loadSectionsWithData = this.loadSectionsWithData.bind(this);
         this.getMap = this.getMap.bind(this);
         this.loadMap = this.loadMap.bind(this);
@@ -133,20 +127,18 @@ class World extends Component {
         }
     }
 
-    loadTextureWithFrame(x, y, textureCacheURL, ID, frame, container = this.pixiApp.stage) {
-        let sprite = this.loadTexture(x, y, textureCacheURL, ID, container);
-        sprite.frame = frame;
-        return sprite;
-    }
 
-    loadTexture(x, y, textureCacheURL, ID, container) {
-        let sprite = new PIXI.Texture(TextureCache[textureCacheURL])
-        sprite = new Sprite(sprite);
-        sprite.x = x;
-        sprite.y = y;
-        sprite.identifier = ID;
-        this.fillInGridFromXY(sprite.x, sprite.y, sprite.width, sprite.height, sprite);
-        container.addChild(sprite);
+    loadTexture(col, row, textureCacheURL, ID, frame, container) {
+        //recall some nuance, we set the 0,0 coordinate of our map to be 
+        //at col = this.leftX and row = this.leftY, therefore, after we generate our row
+        //we need to be transform our row/col by adjusting it accordingly
+        const x = (col - this.leftX) * SQUARELENGTH;
+        const y = (row - this.leftY) * SQUARELENGTH;
+        const sprite = container.tile(TextureCache[textureCacheURL], x, y, 
+                                                {u: frame[0], v: frame[1],
+                                                tileWidth: frame[2], tileHeight: frame[3]});
+        const object = {tileData: sprite, identifier: ID};
+        this.fillInGrid(col, row, frame[2], frame[3], object);
         return sprite
     }
 
@@ -187,7 +179,6 @@ class World extends Component {
         if (!this.outOfBounds(row, col)) {
             row = Math.round(row);
             col = Math.round(col);
-            // console.log(col, row);
             if (this.grid[row][col]) {
                 const item = this.grid[row][col];
                 if (item.identifier === TREE) {
@@ -199,11 +190,7 @@ class World extends Component {
                     return ;
                 }
             } 
-        } else {
-            // this.sprite.vx = 0;
-            // this.sprite.vy = 0;
-        }
-
+        } 
         //CODE TO HANDLE COLLISION WITH A STOP ITEM
         //need to check whether a sprite is moving INTO the collision (in which case
         //we want to restrict movement) or AWAY from the collision (in which case we
@@ -233,50 +220,6 @@ class World extends Component {
     }
 
 
-    //takes a heuristic (i.e. number of objects) and a specific objects
-    //and initializes the necessary sprites at random location, adding it to the world
-    addObjectsToBackground(numberOfObject, subImageArray, ID, textureCacheURL) {
-        for (let i = 0; i < numberOfObject; i++) {
-            const [, , width, height] = subImageArray;
-            const [row, col] = this.getRandomLocation(width, height);
-            if (this.grid[row][col] === null) {
-                let object = new PIXI.Texture(TextureCache[textureCacheURL]);
-                object.frame = new Rectangle(...subImageArray);
-                object = new Sprite(object);
-                object.x = SQUARELENGTH * col;
-                object.y = SQUARELENGTH * row;
-                object.identifier = ID;
-                //TODO: resolve if object size is larger than width/height
-                if (width > SQUARELENGTH || height > SQUARELENGTH) {
-                    this.fillInGrid(row, col, width, height, object);
-                } else {
-                    this.grid[row][col] = object; 
-                }
-                this.pixiApp.stage.addChild(object);
-            }
-        }
-    }
-    
-    //helper wrapper method to add a static object to the background
-    //numberOfObject: number of object we want to create
-    //subImageArrays: array of arrays - each element is an array of [x, y, width, height]
-    //defining where the sub-image exists within our tileset
-    //ID: a constant to identify what kind of sprite this is in the future 
-    addStaticObject(numberOfObject, subImageArrays, ID, textureCacheURL = "/static/img/rpg.png") {
-        while (subImageArrays.length > 0) {
-            //divide by the subImageArray length to encourage "reaching" or using up
-            //all of the possible combinations
-            const currNum = Math.floor(Math.random() * numberOfObject / subImageArrays.length);
-            const next = subImageArrays.shift();
-            if (subImageArrays.length === 0) {
-                this.addObjectsToBackground(numberOfObject, next, ID, textureCacheURL);
-            } else {
-                this.addObjectsToBackground(currNum, next, ID, textureCacheURL);
-                numberOfObject -= currNum;
-            }
-        } 
-    }
-
     getRandomLocation(width, height) {
         //randomly select a pixel chunk to return
         if ((width > SQUARELENGTH) || (height > SQUARELENGTH)) {
@@ -288,37 +231,10 @@ class World extends Component {
         return [Math.floor(Math.random() * this.grid.length), Math.floor(Math.random() * this.grid[0].length)]
     }
 
-    //populates background with static objects designed to make everything prettier
-    populateBackground() {
-        //heuristics
-        //x flowers, n rocks, 1 well, 1 pond, pathways?
-        //stores list of tuples (JS technically doesn't have tuples but we can "pretend it does") 
-        // defined as (x, y, width, height) representing location of image in tileset
-        const rocks = [[0, 0, 32, 32]];
-        //flower top left, top right, bottom left onwards...
-        const flowers = [[145, 96, 14, 16], [159, 97, 17, 15], [144, 112, 14, 13], [160, 112, 16, 13],
-                         [175, 112, 18, 16], [192, 112, 16, 16]];
-        const well = [[192, 64, 16, 32], [209, 77, 14, 17]];
-        const grass = [[112, 0, 14, 14], [128, 0, 13, 15], [112, 15, 16, 15], [129, 14, 15, 15]]
-        const lake = [[206, 0, 33, 16]];
-        const emptyYard = [[0, 67, 48, 48]];
-        //TODO: handle if size of item larger than the square, and assign the reference
-        //to the correct neighboring items
-        this.addStaticObject(NUM_GRASS, grass, BACKGROUND_ITEM);
-        this.addStaticObject(NUM_ROCKS, rocks, STOP_ITEM, "/static/img/rock.png")
-        this.addStaticObject(NUM_FLOWERS, flowers, BACKGROUND_ITEM);
-        this.addStaticObject(NUM_WELLS, well, STOP_ITEM);
-        // this.addStaticObject(NUM_LAKE, lake);
-        // this.addStaticObject(NUM_EMPTY_SPACE, emptyYard);
-    }
 
-    //populates random number of trees onto the canvas up to a maximum
-    populateTrees(numTrees = 30) {
-        this.addObjectsToBackground(numTrees, [96, 80, 32, 32], TREE, "/static/img/rpg.png");
-    }
     //fills in an object greater than our square size into the corresponding cells in our grid
     //x, y correspond to the top left point of our image
-    fillInGrid(row, col, width, height, object) {
+    fillInGrid(col, row, width, height, object) {
         //TODO: fix this, not sure?
         const numSquaresWide = Math.ceil(width / SQUARELENGTH);
         const numSquaresHigh = Math.ceil(height / SQUARELENGTH);
@@ -326,6 +242,7 @@ class World extends Component {
             for (let y = 0; y < numSquaresWide; y++) {
                 if (!this.outOfBounds(row + x, col + y)) {
                     this.grid[row + x][col + y] = object;
+                    console.log(row, col);
                 }
             }
         }
@@ -335,159 +252,40 @@ class World extends Component {
     fillInGridFromXY(x, y, width, height, object) {
         const row = Math.floor(y / SQUARELENGTH);
         const col = Math.floor(x / SQUARELENGTH);
-        this.fillInGrid(row, col, width , height, object);
-    }
-
-    //TODO: load objects i.e. new TextureCache sprites from reusable function
-    loadHouse() {
-        //load house in the center first
-        let house = TextureCache["/static/img/houseRatio.png"];
-        house = new Sprite(house);
-        //needs to be a multiple of 32 so it fits nice and flush with our grid
-        const houseX = 320;
-        const houseY = 192;
-        house.x = houseX;
-        house.y = houseY;
-        //rotate house pi/2 radians anti-clockwise
-        //fill the house in our grid
-        house.identifier = STOP_ITEM;
-        this.fillInGridFromXY(houseX, houseY, house.width, house.height, house);
-        this.staticBackground.addChild(house);
-        //add bushes around the house
-        let bushes1 = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
-        let bushes2 = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
-        let rectangle = new Rectangle(191, 17, 18, 46);
-        bushes1.frame = rectangle;
-        bushes2.frame = rectangle;
-        bushes1 = new Sprite(bushes1);
-        bushes2 = new Sprite(bushes2);
-        bushes1.height = house.height - 2 * SQUARELENGTH;
-        bushes2.height = house.height;
-        const bush1X = houseX - bushes1.width;
-        const bush2X = houseX + house.width;
-        bushes1.x = bush1X
-        bushes1.y = houseY;
-        bushes2.x = bush2X
-        bushes2.y = houseY;
-        bushes1.identifier = BACKGROUND_ITEM;
-        bushes2.identifier = BACKGROUND_ITEM;
-        //fill them in our grid
-        this.fillInGridFromXY(bush1X, houseY, bushes1.width, bushes1.height, bushes1);
-        this.fillInGridFromXY(bush2X, houseY, bushes2.width, bushes2.height, bushes2);
-        
-        this.staticBackground.addChild(bushes1);
-        this.staticBackground.addChild(bushes2);
-
-
-        //add small decorations around the house
-        this.loadDecor(house.x, house.y, house.width, house.height);
-
-        //add cliff
-        const cliffX = 3 * SQUARELENGTH;
-        const cliffY = houseY + house.height - 2 * SQUARELENGTH;
-        let cliffLeft = this.loadTexture(cliffX, cliffY, "/static/img/cliff.png", BACKGROUND_ITEM, this.staticBackground);
-
-    }
-    
-    
-    loadDecor(houseX, houseY, houseWidth, houseHeight) {
-        //walkway leading up to farm
-        let walkwayBack = new PIXI.Texture(TextureCache["/static/img/walkwayup.png"])
-        walkwayBack = new PIXI.TilingSprite(walkwayBack, SQUARELENGTH, 3 * SQUARELENGTH);
-        walkwayBack.y = houseY - walkwayBack.height;
-        walkwayBack.x = houseX + houseWidth / 2 
-        walkwayBack.identifier = BACKGROUND_ITEM;
-        this.fillInGridFromXY(walkwayBack.x, walkwayBack.y, walkwayBack.width, walkwayBack.height, walkwayBack);
-        this.staticBackground.addChild(walkwayBack);
-
-        //farm
-        let farmX = walkwayBack.x - Math.floor(3 * 160 / 5);
-        let farmY = walkwayBack.y - 128;
-        let farm = this.loadTexture(farmX, farmY, "/static/img/farmRatio.png", STOP_ITEM, this.staticBackground);
-        
-        if (window.innerHeight > houseY + houseHeight) {
-            //front porch
-            let walkwayX =  houseX + SQUARELENGTH;
-            let walkwayY =  houseY + houseHeight;
-            let walkwayFront = this.loadTexture(walkwayX, walkwayY, "/static/img/front.png", BACKGROUND_ITEM, this.staticBackground);
-            //wall for front porch
-            let porchX =  walkwayFront.x - 2 * SQUARELENGTH;
-            let porchY =  walkwayFront.y + 3 * SQUARELENGTH;
-            let porch = this.loadTexture(porchX, porchY, "/static/img/frontwall.png", STOP_ITEM, this.staticBackground);
-            let porchX2 = walkwayFront.x + 3 * SQUARELENGTH;
-            let porch2 = this.loadTexture(porchX2, porchY, "/static/img/frontwall.png", STOP_ITEM, this.staticBackground);
-
-            //bottom border path
-            let bottomWalkway = new PIXI.Texture(TextureCache["/static/img/walkwayside.png"])
-            bottomWalkway = new PIXI.TilingSprite(bottomWalkway, SQUARELENGTH * this.maxCols, SQUARELENGTH);
-            bottomWalkway.y = porch2.y - SQUARELENGTH;
-            bottomWalkway.x = 0;
-            bottomWalkway.identifier = BACKGROUND_ITEM;
-            this.fillInGridFromXY(bottomWalkway.x, bottomWalkway.y, bottomWalkway.width, bottomWalkway.height, bottomWalkway);
-            this.etaticBackground.addChild(bottomWalkway);
-        }
-        
-    }
-
-
-    //loads a path between two objects
-    loadPathToSection(object1, row1, col1, object2, row2, col2) {
-        //check if they're parallel to each other
-        let path = new PIXI.Texture(TextureCache["/static/img/rpg.png"])
-        path.frame = new Rectangle(0, 67, 32, 32);
-        if (row1 === row2 && col1 !== col2) {
-            path = new PIXI.TilingSprite(path, SQUARELENGTH, object2.x - object1.x);
-            path.x = object1.x; 
-            path.y = object1.y;
-            console.log("hooray!");
-        } else if (col1 == col2 && row1 !== row2) {
-            path = new PIXI.TilingSprite(path, object2.y - object1.y, SQUARELENGTH);
-            path.x = object1.x; 
-            path.y = object1.y;
-            console.log("hoorah!");
-        } else {
-            return ;
-        }
-
-        path.identifier = BACKGROUND_ITEM;
-        this.fillInGridFromXY(path.x, path.y, path.width, path.height, path);
-        this.staticBackground.addChild(path);
+        this.fillInGrid(col, row, width , height, object);
     }
 
     generateSections() {
+        const sectionHeight = 10;
+        const sectionWidth = 10; 
+        //forbidden area is a col, row increment to each of the areas below
+        //designed to add a little bit of room for text if applicable
+        const forbiddenAreaLoc = [3, 3];
+        const forbiddenAreaHeight = 3; 
+        const forbiddenAreaWidth = 3; 
         const halfRows = Math.floor(this.maxRows / 2);
         const halfCols = Math.floor(this.maxCols / 2);
-        const areas = [[0,0], [halfRows, 0], [this.maxRows - 4, 0], [this.maxRows - 3, halfCols - getRandomArbitrary(3, 5)],
-                       [this.maxRows - getRandomArbitrary(3, 6), this.maxCols - 3], [halfRows - 3, this.maxCols - getRandomArbitrary(3, 7)], [0, this.maxCols - getRandomArbitrary(3, 6)]];
+        //list of col,row of the different sectionWidth x sectionHeight sections to 
+        //populate trees in
+        const areas = [[20, 80], [30, 80], [40, 80], [50, 80], [60, 80], [70, 80], [80, 80]]
         var lastSection = null;
         //need to keep track of how many sections we ACTUALLY load
         var numSections = 0;
         for (let section = 0; section < areas.length ; section++) {
-            //section is a 3x3 area of land
-            const width = 3 * SQUARELENGTH;
-            const height = 3 * SQUARELENGTH;
-            const [row, col] = areas[section]
-            //check 4 corners are free before placing it
-            if (!this.grid[row][col] && !this.grid[row + 2][col] && !this.grid[row][col + 2] && !this.grid[row + 2][col + 2]) {
-                const x =  col * SQUARELENGTH;
-                const y = row * SQUARELENGTH;
-                numSections += 1;
-                let yard = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
-                yard.frame = new Rectangle(0, 67, 48, 48);
-                yard = new Sprite(yard);
-                yard.width = width;
-                yard.height = height;
-                yard.x = x;
-                yard.y = y;
-                this.pixiApp.stage.addChild(yard);
-                this.fillInGridFromXY(x, y, yard.width, yard.height, yard);
-                if (lastSection) {
-                    this.loadPathToSection(yard, row, col, ...lastSection);
+            const currSection = areas[section];
+            const totalArea = sectionHeight * sectionWidth;
+            //estimate ~ how many trees we can add, each tree is 2 * SQUARELENGTH
+            const estimatePerSection = (totalArea - forbiddenAreaHeight * forbiddenAreaWidth) / 2; 
+            var treesAdded = 0;
+            const treeFrame = [160, 80, 16, 32];
+            while (treesAdded < estimatePerSection) {
+                const randRow = getRandomArbitrary(currSection[1], currSection[1] + sectionHeight);
+                const randCol = getRandomArbitrary(currSection[0], currSection[0] + sectionWidth);
+                if (!this.grid[randRow][randCol] || this.grid[randRow][randCol].identifier === BACKGROUND_ITEM) {
+                    const tree = this.loadTexture(randCol, randRow, "/static/img/rpg.png", TREE, treeFrame, this.staticBackground);
+                    //do something to hook tree to local added data
                 }
-                lastSection = [yard, row, col];
-                //layout the walkway 
-            } else {
-                console.log(row, col);
+                treesAdded += 1;
             }
         }
         return numSections;
@@ -549,14 +347,12 @@ class World extends Component {
                     const xCoord = xOffset * SQUARELENGTH;
                     const yCoord = yOffset * SQUARELENGTH;
                     // this.staticBackground.addChild(layer);
-                    this.staticBackground.tile(TextureCache["/static/img/rpg.png"], xCoord, yCoord, 
+                    const object = this.staticBackground.tile(TextureCache["/static/img/rpg.png"], xCoord, yCoord, 
                                                 {u: tileCol * SQUARELENGTH, v: tileRow * SQUARELENGTH,
                                                 tileWidth: SQUARELENGTH, tileHeight: SQUARELENGTH});
-                    
                     //only care about the highest level non-zero tile across layers
-                    //note we don't need the reference to any tile we statically load from background
                     //TODO - not true? what about water?
-                    this.grid[y][x] = {identifier: this.tileset[zeroIndexedID].value}; 
+                    this.grid[y][x] = {tileData: object, identifier: this.tileset[zeroIndexedID].value};
                     //don't do any culling by default, but the code is left like this in case
                     //I want to revisit it and try after failing to make it work correctly
                     // if (yOffset >= 0 && yOffset <= WINDOW_HEIGHT && xOffset >= 0 && xOffset <= WINDOW_WIDTH) {
@@ -622,7 +418,10 @@ class World extends Component {
 
                 //Add the sprite to the stage
                 this.pixiApp.stage.addChild(this.sprite);
-                console.log("sprite");
+
+
+                //Add all of the trees!
+                this.generateSections();
 
                 //Render the stage   
                 this.pixiApp.renderer.render(this.pixiApp.stage);
