@@ -68,8 +68,31 @@ func loadMap(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(Data{Map: mapData, Tileset: tileData})
 }
 
+func findRelatedData(w http.ResponseWriter, r *http.Request) {
+	type query struct {
+		id string
+	}
+	var searchData query
+	err := json.NewDecoder(r.Body).Decode(&searchData)
+	if err != nil {
+		log.Println("Error parsing JSON request: ", err)
+		w.WriteHeader(http.StatusBadGateway)
+	}
+	results := search(searchData.id, 150)
+	json.NewEncoder(w).Encode(results)
+}
+
+func loadInitialData(w http.ResponseWriter, r *http.Request) {
+	//stuff
+}
+
 func Start() {
-	GenerateEmbeddings()
+	err := generateEmbeddings()
+	//don't start the server if the word embeddings are not successfully generated
+	if err != nil {
+		return
+	}
+
 	r := mux.NewRouter()
 
 	srv := &http.Server{
@@ -81,6 +104,8 @@ func Start() {
 
 	r.HandleFunc("/", index)
 	r.Methods("GET").Path("/map").HandlerFunc(loadMap)
+	r.Methods("GET").Path("/initialData").HandlerFunc(loadInitialData)
+	r.Methods("POST").Path("/search").HandlerFunc(findRelatedData)
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 	r.PathPrefix("/assets/").Handler(http.StripPrefix("/assets/", http.FileServer(http.Dir("./assets"))))
 	log.Printf("Server listening on %s\n", srv.Addr)

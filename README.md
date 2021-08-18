@@ -36,6 +36,9 @@ Ideas:
 ## How do we create the background?
 Background is built in mapeditor, load the entire map on loading - pivot around the sprite to give illusion of movement
 
+Models = pre-trained word embeddings from FastText (Creative Common License)
+Corpus = store data for all of records with their assosicated doc2vec mappings
+
 
 Main screen:
 - Sections with different key words in different corners of the screen, each keyword has some "trees" linking to different data (page 1)
