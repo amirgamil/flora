@@ -69,6 +69,7 @@ func loadMap(w http.ResponseWriter, r *http.Request) {
 }
 
 func Start() {
+	GenerateEmbeddings()
 	r := mux.NewRouter()
 
 	srv := &http.Server{

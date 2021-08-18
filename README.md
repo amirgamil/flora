@@ -23,16 +23,18 @@ becuase our grid is in whole integer increments but for precision, we
 col/row tiles return a decimal value => for example, if we have 
 grid [a, b] if the sprite is halfway into b, pixel value will be that of a + some decimal
 
+## How to populate data?
+Ideas:
+1. Query a "topic" or a specific data source
+    a. topic -> returns of most relevant pieces of data regarding that
+        i. Either via token-frequency overlap (searches all of data sources and finds most "overlapped" data sources)
+        ii. Or embeddings and cosine similarity
+2. Use embeddings to extract key themes or relevant articles
+    How? Not sure
+3. Just return most relevant articles without key themes -> scans across the list of computed embeddings and returns the most relevant ones
+
 ## How do we create the background?
-This one was tricky. If I wanted to have as much control over loading
-"the graph" dynamically depending on the information, I couldn't purely go with
-a static pre-loaded background, which would have also made my life significantly easier.
-
-Instead, we create a "grid" of our world and decompose it into small pixel chunks. We use those chunks to assign the location of trees (i.e. nodes of our graph) and surrounding space, for exploring their associated links.
-
-We then use any remaining parts of our grid to "beautify" the world. Because we have decomposable pixel chunks, this turns out to be much easier to handle and keep track of which areas of space we've assigned and which we haven't. 
-
-To "beautify" the world in a systematic way which introduces some level of randomness, we **use a number of heuristics for what kinds of objects and how many to add to the world.** So that means `x flowers`, `y rocks`, `1 well`, etc.
+Background is built in mapeditor, load the entire map on loading - pivot around the sprite to give illusion of movement
 
 
 Main screen:

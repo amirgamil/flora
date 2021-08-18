@@ -238,12 +238,11 @@ class World extends Component {
         //TODO: fix this, not sure?
         const numSquaresWide = Math.ceil(width / SQUARELENGTH);
         const numSquaresHigh = Math.ceil(height / SQUARELENGTH);
-        for (let x = 0; x < numSquaresHigh; x++) {
-            for (let y = 0; y < numSquaresWide; y++) {
+        for (let y = 0; y < numSquaresHigh; y++) {
+            for (let x = 0; x < numSquaresWide; x++) {
                 if (!this.outOfBounds(row + x, col + y)) {
-                    this.grid[row + x][col + y] = object;
-                    console.log(row, col);
-                }
+                    this.grid[row + y][col + x] = object;
+                } 
             }
         }
     }
@@ -271,23 +270,36 @@ class World extends Component {
         var lastSection = null;
         //need to keep track of how many sections we ACTUALLY load
         var numSections = 0;
+        const canPlaceTree = (row, col) => {
+            if (!this.grid[row][col] || this.grid[row][col].identifier === BACKGROUND_ITEM) {
+                return true;
+            }
+            return false;
+        }
         for (let section = 0; section < areas.length ; section++) {
             const currSection = areas[section];
             const totalArea = sectionHeight * sectionWidth;
+            const forbiddenCol = currSection[0] + forbiddenAreaLoc[0];
+            const forbiddenRow = currSection[1] + forbiddenAreaLoc[1];
             //estimate ~ how many trees we can add, each tree is 2 * SQUARELENGTH
-            const estimatePerSection = (totalArea - forbiddenAreaHeight * forbiddenAreaWidth) / 2; 
+            const estimatePerSection = 5;//(totalArea - forbiddenAreaHeight * forbiddenAreaWidth) / 2; 
             var treesAdded = 0;
             const treeFrame = [160, 80, 16, 32];
             while (treesAdded < estimatePerSection) {
                 const randRow = getRandomArbitrary(currSection[1], currSection[1] + sectionHeight);
                 const randCol = getRandomArbitrary(currSection[0], currSection[0] + sectionWidth);
-                if (!this.grid[randRow][randCol] || this.grid[randRow][randCol].identifier === BACKGROUND_ITEM) {
+                if (canPlaceTree(randRow, randCol) && canPlaceTree(randRow + 1, randCol)) {
+                    //check forbidden area
+                    const fDiffRow = randRow - forbiddenRow;
+                    const fDiffCol= randCol - forbiddenCol;
+                    if ((fDiffRow >= 0 && fDiffRow < forbiddenRow) || (fDiffCol >= 0 && fDiffCol < forbiddenCol)) continue;
                     const tree = this.loadTexture(randCol, randRow, "/static/img/rpg.png", TREE, treeFrame, this.staticBackground);
                     //do something to hook tree to local added data
                 }
                 treesAdded += 1;
             }
         }
+        console.log(this.grid);
         return numSections;
     }
 
