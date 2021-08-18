@@ -21,6 +21,9 @@ var documentVectors map[string][]float64
 //corpus of all of the words in our vocabulary
 var corpus map[string]int
 
+//model for our embeddings
+var model *Model
+
 //choose to redefine our schema here to avoid importing apollo as an unnecessary dependency
 type ApolloRecord struct {
 	//unique identifier
@@ -73,31 +76,52 @@ func loadRecordVectors() {
 }
 
 func initData() {
+	corpus = make(map[string]int)
+	documentVectors = make(map[string][]float64)
 	loadInvertedIndex()
 	loadData(lcRecordsPath)
 	loadData(srRecordsPath)
+	ensureDataExists(docVectorsPath)
 	loadRecordVectors()
 }
 
+func ensureDataExists(path string) {
+	jsonFile, err := os.Open(path)
+	if err != nil {
+		createFile(path)
+	} else {
+		defer jsonFile.Close()
+	}
+}
+
+func createFile(path string) {
+	f, errCreating := os.Create(path)
+	if errCreating != nil {
+		log.Fatal("Error, could not create database for path: ", path, " with: ", errCreating)
+		return
+	}
+	f.Close()
+}
+
 //load the pretrained model containing word embeddings
-func loadPretrainedEmbeddings() (Model, error) {
-	file, err := os.Open("./models/fast-text-wiki-news-300d.vec")
+func loadPretrainedEmbeddings() error {
+	//./models/fast-text-wiki-news-300d.vec
+	file, err := os.Open("./models/fast-min-text-wiki-news-300d.vec")
 	if err != nil {
 		log.Println("Error loading the pretrained model: ", err)
 	}
 	//create a new modelParser with our pretrained embeddings
 	parser := newParser(file)
 	//load the embeddings into memory
-	model, errParsing := parser.parse()
-	if errParsing != nil {
-		return Model{}, err
+	model, err = parser.parse()
+	if err != nil {
+		return err
 	}
 
-	fmt.Println(model.embeddings[","])
-	return model, nil
+	return nil
 }
 
-func calculateDocumentVectors(model Model) error {
+func calculateDocumentVectors() error {
 	for recordKey, record := range data {
 		docVec, err := model.getDocumentVector(record.Content)
 		if err != nil {
@@ -127,12 +151,12 @@ func generateEmbeddings() error {
 	initData()
 
 	//load pretrained embedinngs
-	model, err := loadPretrainedEmbeddings()
+	err := loadPretrainedEmbeddings()
 	if err != nil {
 		return err
 	}
 
 	//generate embeddings for all of the documents we're going to be processing
-	calculateDocumentVectors(model)
+	calculateDocumentVectors()
 	return err
 }

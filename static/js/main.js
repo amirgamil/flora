@@ -299,7 +299,6 @@ class World extends Component {
                 treesAdded += 1;
             }
         }
-        console.log(this.grid);
         return numSections;
     }
 
@@ -388,8 +387,23 @@ class World extends Component {
     }
 
     //populate the sections with our data
-    loadSectionsWithData(numSections) {
-        //make fetch API call, iterate through each result, for now hard-code
+    loadSectionsWithData() {
+        //load the initial home page with records matching closest to 
+        //the things I care about the most
+        fetch("/initialData", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                queries: ["side project", "community", "startup"]
+            })
+        }).then(result => result.json())
+          .then(data => {
+              console.log(data);
+          }).catch(ex => {
+              console.log("Error getting the initial data: ", ex);
+          })
         const results = [{dummy: true}, {dummy: true}, {dummy: true}, {dummy: true}];
         results.map(data => {
             //do stuff to display data
@@ -431,7 +445,8 @@ class World extends Component {
                 //Add the sprite to the stage
                 this.pixiApp.stage.addChild(this.sprite);
 
-
+                this.loadSectionsWithData();
+            
                 //Add all of the trees!
                 this.generateSections();
 

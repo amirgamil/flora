@@ -3,6 +3,7 @@ package pluto
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"math"
@@ -29,7 +30,7 @@ func newParser(source io.Reader) modelParser {
 
 //given a scanner with a source containing an io.Reader, parses the model and returns
 //our model
-func (parser *modelParser) parse() (Model, error) {
+func (parser *modelParser) parse() (*Model, error) {
 	//note our pretrained model stores the data in a new-line delinated fashion, meaning
 	//every line contains a word and its associated vector
 	//the first line of our model contains the number of words and size of our vector dimension
@@ -43,10 +44,10 @@ func (parser *modelParser) parse() (Model, error) {
 	if errWords != nil || errDim != nil {
 		if errWords != nil {
 			log.Println("Error parsing the number of embeddings: ", errWords)
-			return Model{}, errWords
+			return &Model{}, errWords
 		} else if errDim != nil {
 			log.Println("Error parsing the dimension of embeddings: ", errDim)
-			return Model{}, errDim
+			return &Model{}, errDim
 		}
 	}
 	model := Model{
@@ -58,7 +59,7 @@ func (parser *modelParser) parse() (Model, error) {
 		model.parseLine(parser.scanner.Text())
 	}
 
-	return model, nil
+	return &model, nil
 }
 
 //parses a given string line and stores the resulting vector in the embeddings map
@@ -94,6 +95,10 @@ func (model *Model) getDocumentVector(data string) ([]float64, error) {
 			vectors = append(vectors, wordEmbedding)
 		}
 	}
+	//if not a single word is in the vocab, just return a zero-vector
+	if len(vectors) == 0 {
+		return make([]float64, model.vectorDim), nil
+	}
 	documentVector, err := getMeanVectors(vectors, model.vectorDim)
 	if err != nil {
 		log.Println("Error calculating the mean of several word2vectors: ", err)
@@ -103,10 +108,15 @@ func (model *Model) getDocumentVector(data string) ([]float64, error) {
 }
 
 var mismatchedSize = errors.New("Mismatched size in vector operation")
+var noValidVector = errors.New("Vector of length 0!")
 
 //computes the mean of a list of word vectors of size dim
 func getMeanVectors(vectors [][]float64, dim int64) ([]float64, error) {
 	documentVector := make([]float64, dim)
+	if len(vectors) == 0 {
+		log.Println("Error trying to calculate the mean of a vector")
+		return []float64{}, noValidVector
+	}
 	size := len(vectors[0])
 	//sums across the rows first (i.e. down the columns)
 	for _, vector := range vectors {
@@ -212,6 +222,36 @@ func searchByID(id string, n int) []SearchResult {
 	return rank(results)[:n]
 }
 
+//wrapper of searchBeyKeywords to search several queries
+func searchMultipleKeywordQueries(queries []string, n int) map[string][]SearchResult {
+	results := make(map[string][]SearchResult, len(queries))
+	resultsPerQuery := math.Floor(float64(n) / float64(len(queries)))
+	for _, query := range queries {
+		results[query] = searchByKeywords(query, int(resultsPerQuery))
+	}
+	return results
+}
+
+func searchByKeywords(words string, n int) []SearchResult {
+	keywordsVec, err := model.getDocumentVector(words)
+	if err != nil {
+		return []SearchResult{}
+	}
+	results := make([]result, len(documentVectors))
+	i := 0
+	for recordID, recordVec := range documentVectors {
+		score, err := cosineSim(keywordsVec, recordVec)
+		if err != nil {
+			continue
+		}
+		results[i] = result{score: score, id: recordID}
+		i += 1
+	}
+	rankedResults := rank(results)
+	fmt.Println("Number of ranked res: ", len(rankedResults))
+	return rankedResults[:n]
+}
+
 //helper struct used to package our results in a smaller form-factor for faster loads
 type SearchResult struct {
 	Title   string `json:"title"`
@@ -231,8 +271,14 @@ func rank(unsorted []result) []SearchResult {
 	//put sorted records into needed format and return
 	for _, val := range unsorted {
 		currData := data[val.id]
+		content := ""
+		if len(currData.Content) < 200 {
+			content = currData.Content
+		} else {
+			content = currData.Content[:200]
+		}
 		rankedResults[i] = SearchResult{Title: currData.Title, Link: currData.Link,
-			Content: currData.Title[:200], ID: currData.ID}
+			Content: content, ID: currData.ID}
 		i += 1
 	}
 	return rankedResults

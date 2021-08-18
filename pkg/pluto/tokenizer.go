@@ -13,12 +13,12 @@ var stopWords map[string]bool
 //helper function to add word
 func addWord(sb *s.Builder, tokens *[]string) {
 	currWord := s.ToLower(sb.String())
-	corpus[currWord] = len(corpus)
 	//make sure it's not a stop word before we append it to our list of tokens
 	//use a heuristic that any one-length words are probably missing apostrophes so don't append (only I & a are one letter English
 	//words, both of which should not be added anyway, so no collateral damage missing anything important)
 	if _, isStopWord := stopWords[currWord]; !isStopWord && sb.Len() != 1 {
 		*tokens = append(*tokens, currWord)
+		corpus[currWord] = len(corpus)
 	}
 	//"empty" string builder or remove current word
 	sb.Reset()

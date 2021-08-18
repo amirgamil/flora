@@ -78,12 +78,24 @@ func findRelatedData(w http.ResponseWriter, r *http.Request) {
 		log.Println("Error parsing JSON request: ", err)
 		w.WriteHeader(http.StatusBadGateway)
 	}
-	results := search(searchData.id, 150)
+	results := searchByID(searchData.id, 150)
 	json.NewEncoder(w).Encode(results)
 }
 
 func loadInitialData(w http.ResponseWriter, r *http.Request) {
-	//stuff
+	//queries is a list of strings, each string may contain one or more key words
+	//which we will use to generate a document vector of
+	type query struct {
+		Queries []string `json:"queries"`
+	}
+	var keyWordData query
+	err := json.NewDecoder(r.Body).Decode(&keyWordData)
+	if err != nil {
+		log.Println("Error loading the initial data: ", err)
+		w.WriteHeader(http.StatusBadGateway)
+	}
+	results := searchMultipleKeywordQueries(keyWordData.Queries, 150)
+	json.NewEncoder(w).Encode(results)
 }
 
 func Start() {
@@ -104,7 +116,7 @@ func Start() {
 
 	r.HandleFunc("/", index)
 	r.Methods("GET").Path("/map").HandlerFunc(loadMap)
-	r.Methods("GET").Path("/initialData").HandlerFunc(loadInitialData)
+	r.Methods("POST").Path("/initialData").HandlerFunc(loadInitialData)
 	r.Methods("POST").Path("/search").HandlerFunc(findRelatedData)
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 	r.PathPrefix("/assets/").Handler(http.StripPrefix("/assets/", http.FileServer(http.Dir("./assets"))))

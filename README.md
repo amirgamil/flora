@@ -39,6 +39,10 @@ Background is built in mapeditor, load the entire map on loading - pivot around 
 Models = pre-trained word embeddings from FastText (Creative Common License)
 Corpus = store data for all of records with their assosicated doc2vec mappings
 
+Todos:
+- Remember to add map and tile files
+- Remember to add corpus and models folder with `.keep`
+
 
 Main screen:
 - Sections with different key words in different corners of the screen, each keyword has some "trees" linking to different data (page 1)
