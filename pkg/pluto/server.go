@@ -70,7 +70,7 @@ func loadMap(w http.ResponseWriter, r *http.Request) {
 
 func findRelatedData(w http.ResponseWriter, r *http.Request) {
 	type query struct {
-		id string
+		ID string `json:"id"`
 	}
 	var searchData query
 	err := json.NewDecoder(r.Body).Decode(&searchData)
@@ -78,8 +78,18 @@ func findRelatedData(w http.ResponseWriter, r *http.Request) {
 		log.Println("Error parsing JSON request: ", err)
 		w.WriteHeader(http.StatusBadGateway)
 	}
-	results := searchByID(searchData.id, 150)
+	results := searchByID(searchData.ID, 150)
 	json.NewEncoder(w).Encode(results)
+}
+
+func getRecord(w http.ResponseWriter, r *http.Request) {
+	id := r.FormValue("q")
+	record, inMap := data[id]
+	if id == "" || !inMap {
+		w.WriteHeader(http.StatusBadRequest)
+	} else {
+		json.NewEncoder(w).Encode(record)
+	}
 }
 
 func loadInitialData(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +127,7 @@ func Start() {
 	r.HandleFunc("/", index)
 	r.Methods("GET").Path("/map").HandlerFunc(loadMap)
 	r.Methods("POST").Path("/initialData").HandlerFunc(loadInitialData)
+	r.Methods("POST").Path("/getRecordDetail").HandlerFunc(getRecord)
 	r.Methods("POST").Path("/search").HandlerFunc(findRelatedData)
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 	r.PathPrefix("/assets/").Handler(http.StripPrefix("/assets/", http.FileServer(http.Dir("./assets"))))

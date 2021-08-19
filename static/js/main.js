@@ -39,6 +39,11 @@ function getRandomArbitrary(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function getRandomFromBucket() {
+    var randomIndex = Math.floor(Math.random()*bucket.length);
+    return bucket.splice(randomIndex, 1)[0];
+ }
+
 
 class World extends Component {
     init() {
@@ -58,11 +63,12 @@ class World extends Component {
         //global sprite offsets to help render the map as the camera moves
         this.playerOffsetX = 0;
         this.playerOffsetY = 0;
-        //use this as a lot so calculate it once
+        this.showTreeModal = false;
         this.setup = this.setup.bind(this);
         this.gameLoop = this.gameLoop.bind(this);
         this.handleKeyDown = this.handleKeyDown.bind(this);
         this.handleKeyUp = this.handleKeyUp.bind(this);
+        this.handleCursorMove = this.handleCursorMove.bind(this);
         this.updateState = this.updateState.bind(this);
         this.outOfBounds = this.outOfBounds.bind(this);
         this.fillInGrid = this.fillInGrid.bind(this);
@@ -76,6 +82,10 @@ class World extends Component {
         this.initGrid = this.initGrid.bind(this);
         this.getSpriteRowCol = this.getSpriteRowCol.bind(this);
         this.shouldSpriteStop = this.shouldSpriteStop.bind(this);
+        this.displayTreeModal = this.displayTreeModal.bind(this);
+        this.closeTreeModal = this.closeTreeModal.bind(this);
+        this.updateSections = this.updateSections.bind(this);
+        this.fillInRootTree = this.fillInRootTree.bind(this);
         this.player = {
             x: 0,
             y: 0
@@ -88,6 +98,8 @@ class World extends Component {
         //add padding to account for gaps between cells so that game canvas does not stretch beyond full screen
         window.addEventListener("keydown", this.handleKeyDown);
         window.addEventListener("keyup", this.handleKeyUp);
+        // this.pixiApp.view.addEventListener("mousemove", this.handleCursorMove)
+        this.pixiApp.view.addEventListener("click", this.handleCursorMove)
         this.pixiApp.loader
               .add("/static/img/character.png")
               .add("/static/img/rpg.png")
@@ -116,6 +128,11 @@ class World extends Component {
         this.step = 0;
     } 
 
+    fillInRootTree(data) {
+        this.rootTree = data;
+        this.grid[61][54].treeData = data;
+        this.grid[62][54].treeData = data;
+    }
 
     initGrid() {
         for (let i = 0; i < this.maxRows; i++) {
@@ -128,7 +145,7 @@ class World extends Component {
     }
 
 
-    loadTexture(col, row, textureCacheURL, ID, frame, container) {
+    loadTexture(col, row, textureCacheURL, ID, frame, container, options = {}) {
         //recall some nuance, we set the 0,0 coordinate of our map to be 
         //at col = this.leftX and row = this.leftY, therefore, after we generate our row
         //we need to be transform our row/col by adjusting it accordingly
@@ -138,6 +155,9 @@ class World extends Component {
                                                 {u: frame[0], v: frame[1],
                                                 tileWidth: frame[2], tileHeight: frame[3]});
         const object = {tileData: sprite, identifier: ID};
+        if (options && ID === TREE) {
+            object.treeData = options.data;
+        }
         this.fillInGrid(col, row, frame[2], frame[3], object);
         return sprite
     }
@@ -254,7 +274,31 @@ class World extends Component {
         this.fillInGrid(col, row, width , height, object);
     }
 
-    generateSections() {
+    updateSections() {
+        fetch("/search", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(this.treeData.id)
+        }).then(result => result.json())
+          .then(data => {
+              //set the root tree to the data we just clicked through
+              this.fillInRootTree(this.treeData);
+              //populate data, TODO: do I need to remove the previous data?
+              this.generateSections(data);
+              //set the sprite back to the location of the root tree
+              this.staticBackground.pivot.set(0, 100);
+          }).catch(ex => {
+              console.log("Error going down the rabbit hole: ", ex);
+          })
+    }
+
+    //pass in data which is either 
+    //1. Have JSON of {keyword: [result1, result2,...], keyword: [result1, ...] -> how we load at the start
+    //2. Have JSON of {id: [result1, result2, ......]} if we are browsing nested or related 
+    //connections
+    generateSections(data) {
         const sectionHeight = 10;
         const sectionWidth = 10; 
         //forbidden area is a col, row increment to each of the areas below
@@ -262,40 +306,61 @@ class World extends Component {
         const forbiddenAreaLoc = [3, 3];
         const forbiddenAreaHeight = 3; 
         const forbiddenAreaWidth = 3; 
-        const halfRows = Math.floor(this.maxRows / 2);
-        const halfCols = Math.floor(this.maxCols / 2);
+        var bucket = []
+        //create bucket from which we will draw coords
+        for (let x = 0; x < sectionWidth; x++) {
+            for (let y = 0; y < sectionHeight; y++) {
+                const fDiffRow = y - forbiddenAreaLoc[1];
+                const fDiffCol = x - forbiddenAreaLoc[0];
+                if ((fDiffRow >= 0 && fDiffRow <= forbiddenAreaHeight) && (fDiffCol >= 0 && fDiffCol <= forbiddenAreaWidth)) {
+                    continue;
+                }
+                //[col, row]
+                bucket.push([x, y]);
+            }
+        }
         //list of col,row of the different sectionWidth x sectionHeight sections to 
         //populate trees in
-        const areas = [[20, 80], [30, 80], [40, 80], [50, 80], [60, 80], [70, 80], [80, 80]]
-        var lastSection = null;
+        //list in order of importance - more important results closer to the middle
+        const areas = [[50, 80], [40, 80], [60, 80], [30, 80], [70, 80], [20, 80], [80, 80]]
         //need to keep track of how many sections we ACTUALLY load
         var numSections = 0;
-        const canPlaceTree = (row, col) => {
-            if (!this.grid[row][col] || this.grid[row][col].identifier === BACKGROUND_ITEM) {
-                return true;
-            }
-            return false;
+        const dataSections = []
+        //standarize data format in preparation of constructing the forest
+        //since data may come in two forms
+        if (data.id) {
+            //do stuff
+        } else {
+            Object.keys(data).forEach((key, i) => {
+                dataSections[i] = {[key]: data[key]}
+            })
         }
         for (let section = 0; section < areas.length ; section++) {
+            //if no more data available, stop adding trees
+            if (section >= dataSections.length) break;
             const currSection = areas[section];
+            //forest keyword is the keyword that is related to all of the trees
+            //in a clearing
+            const currForestKeyword = Object.keys(dataSections[section])[0];
+            const currForestData = dataSections[section][currForestKeyword];
             const totalArea = sectionHeight * sectionWidth;
-            const forbiddenCol = currSection[0] + forbiddenAreaLoc[0];
-            const forbiddenRow = currSection[1] + forbiddenAreaLoc[1];
+            const [lowerCol, lowerRow] = currSection;
             //estimate ~ how many trees we can add, each tree is 2 * SQUARELENGTH
-            const estimatePerSection = 5;//(totalArea - forbiddenAreaHeight * forbiddenAreaWidth) / 2; 
+            const estimatePerSection = Math.floor((totalArea - forbiddenAreaHeight * forbiddenAreaWidth) / 2); 
+            //create copy to randomly populate current grid
+            var currBucket = [...bucket];
             var treesAdded = 0;
             const treeFrame = [160, 80, 16, 32];
+            //col and row < 5, col < 5 and row > 5, col > 5, and row < 5, col > 5 and row > 5
             while (treesAdded < estimatePerSection) {
-                const randRow = getRandomArbitrary(currSection[1], currSection[1] + sectionHeight);
-                const randCol = getRandomArbitrary(currSection[0], currSection[0] + sectionWidth);
-                if (canPlaceTree(randRow, randCol) && canPlaceTree(randRow + 1, randCol)) {
-                    //check forbidden area
-                    const fDiffRow = randRow - forbiddenRow;
-                    const fDiffCol= randCol - forbiddenCol;
-                    if ((fDiffRow >= 0 && fDiffRow < forbiddenRow) || (fDiffCol >= 0 && fDiffCol < forbiddenCol)) continue;
-                    const tree = this.loadTexture(randCol, randRow, "/static/img/rpg.png", TREE, treeFrame, this.staticBackground);
-                    //do something to hook tree to local added data
-                }
+                //if no more coords free, break
+                if (currBucket.length === 0) break;
+                const randIndex = Math.floor(Math.random() * currBucket.length);
+                //splice/remove 2 values since each individual tree takes height of two,
+                //and bucket is structured as [row1, col1], [row1, col2]..
+                const [randCol, randRow] = currBucket.splice(randIndex, 2)[0];
+                const [treeCol, treeRow] = [randCol + lowerCol, randRow + lowerRow]
+                const tree = this.loadTexture(treeCol, treeRow, "/static/img/rpg.png", TREE, treeFrame, this.staticBackground, {data: currForestData[treesAdded]});
                 treesAdded += 1;
             }
         }
@@ -400,7 +465,7 @@ class World extends Component {
             })
         }).then(result => result.json())
           .then(data => {
-              console.log(data);
+              this.generateSections(data);
           }).catch(ex => {
               console.log("Error getting the initial data: ", ex);
           })
@@ -442,14 +507,22 @@ class World extends Component {
                 this.sprite.vy = 0;
 
 
+                //manually populate the first "root tree" pointing to my website!
+                const rootTree = {content: "Hi, I'm Amir and this is my digital garden. 🌳",
+                                    id: "home",
+                                    left: 293,
+                                    link: "https://amirbolous.com/",
+                                    title: "Welcome to my digital garden!",
+                                    top: 20,
+                                };
+                this.fillInRootTree(rootTree);
+
                 //Add the sprite to the stage
                 this.pixiApp.stage.addChild(this.sprite);
 
+                //Get data from backend and load the trees!
                 this.loadSectionsWithData();
             
-                //Add all of the trees!
-                this.generateSections();
-
                 //Render the stage   
                 this.pixiApp.renderer.render(this.pixiApp.stage);
 
@@ -558,6 +631,45 @@ class World extends Component {
         }
     }
 
+    closeTreeModal() {
+        this.showTreeModal = false;
+        this.render();
+    }
+
+    displayTreeModal() {
+        this.showTreeModal = true;
+        this.render();
+        //transform object directly
+        document.getElementsByClassName("treeModal")[0].style.transform=`translate(${this.treeData["left"]}px, ${this.treeData["top"]}px)`
+    }
+
+    handleCursorMove(evt) {
+        //get the cursor position relative to our map
+        const offsetX = evt.offsetX - this.pixiApp.screen.x;
+        const offsetY = evt.offsetY - this.pixiApp.screen.y;
+        //note we divide by 2 since we scale our map by 2x before we render (so 
+        //based on pixels, each tile of SQUARELENGTH effectives becomes 2 * SQUARRELENGTH)
+        const col = Math.floor(this.leftX + offsetX / (2 * SQUARELENGTH));
+        const row = Math.floor(this.leftY + offsetY / (2 * SQUARELENGTH));
+
+        if (this.grid[row][col].identifier === TREE) {
+            this.treeData = this.grid[row][col].treeData;
+            this.treeData["top"] = 20;
+            if (offsetX <= 50 || offsetX - WIDTH <= 50) {
+                this.treeData["left"] = offsetX;
+                // this.treeData["top"] = offsetY - 200;
+            } else if (offsetY <= 50) {
+                // this.treeData["top"] = offsetY;
+                this.treeData["left"] = offsetX - 200;
+            } 
+            //save ~ pixel location of tree to adjust the modal to the correct position
+            this.stopCursorMoving = true;
+            this.displayTreeModal();
+        } else {
+            this.stopCursorMoving = false;
+        }
+    }
+
     //delta = amount of fractional lag between frames
     //main game loop that gets called at x FPS where x depends on device (usually x = 60)
     gameLoop(delta) {
@@ -572,6 +684,9 @@ class World extends Component {
         //to the negative offset (moving forward should "pull the background back")
         this.playerOffsetX -= this.sprite.vx;
         this.playerOffsetY -= this.sprite.vy;
+        //update the value that points to the top left corner of the game
+        this.leftX -= this.playerOffsetX / SQUARELENGTH;
+        this.leftY -= this.playerOffsetY / SQUARELENGTH;
         // this.renderMap();
         //make it look like the player is moving by moving the background
         this.player.x += this.sprite.vx;
@@ -590,6 +705,13 @@ class World extends Component {
     create() {
         return html`<div class="colWrapper gameContainer">
             ${this.pixiApp.view}
+            ${this.showTreeModal ? html`<div class = "treeModal">
+                <h4 class="modalTitle">🌲 ${this.treeData.title}</h4>
+                <p><a href=${this.treeData.link} target="_blank">Source</a></p>
+                <p>${this.treeData.id === "home" ? this.treeData.content : this.treeData.content + "..."}</p>
+                <button onclick=${this.updateSections}>⬇️ the 🐇 hole</button>
+                <button class="closeModal" onclick=${this.closeTreeModal}>x</button>
+            </div>` : null}
         </div>`
     }
 }
@@ -626,7 +748,7 @@ class App extends Component {
                     }
                 }}
             </div>
-            <footer>Built with <a href="https://github.com/amirgamil/poseidon">Poseidon</a> by <a href="https://amirbolous.com/">Amir</a></footer>
+            <footer>Built with <a href="https://github.com/amirgamil/poseidon">Poseidon</a> by <a href="https://amirbolous.com/">Amir</a> and <a href="">open source</a> on GitHub</footer>
         </main>` 
     }
 }
