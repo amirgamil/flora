@@ -139,7 +139,7 @@ func getMeanVectors(vectors [][]float64, dim int64) ([]float64, error) {
 //returns a value between 0 and 1
 func cosineSim(vector1 []float64, vector2 []float64) (float64, error) {
 	if len(vector1) != len(vector2) {
-		log.Println("Error trying to compute the cosine similarity due to mismatched sizes")
+		log.Println("Error trying to compute the cosine similarity due to mismatched sizes: ", len(vector1), len(vector2))
 		return 0, mismatchedSize
 	}
 	//Refer to this equation for details
@@ -174,10 +174,11 @@ func tfIdfSim(tokenFreq1 map[string]int, tokenFreq2 map[string]int) (float64, er
 }
 
 func getTfIdfVector(tokenFreq map[string]int, size int) []float64 {
-	result := make([]float64, size)
+	result := make([]float64, size+1)
 	numToksInDoc := len(tokenFreq)
 	for token, frequencyOfToken := range tokenFreq {
 		//multiplies the tf * idf
+		fmt.Println(corpus[token])
 		result[corpus[token]] = (float64(frequencyOfToken) / float64(numToksInDoc)) * idf(token)
 	}
 	//note, all words which we don't access above default to 0 when we initalize our slice
@@ -208,18 +209,25 @@ type result struct {
 }
 
 //takes the string id of a record and returns the n most similar records
-func searchByID(id string, n int) []SearchResult {
+func searchByID(id string, n int) SimilarToID {
 	currVec := documentVectors[id]
 	results := make([]result, len(documentVectors)-1)
+	similarToIDResults := SimilarToID{ID: id}
 	i := 0
 	for recordID, recordVec := range documentVectors {
 		if recordID != id {
+			//TODO: check why some scores are NaN
 			score := computeScore(currVec, recordVec, id, recordID)
 			results[i] = result{score: score, id: recordID}
 			i += 1
 		}
 	}
-	return rank(results)[:n]
+	rankedResults := rank(results)
+	if len(results) >= n {
+		similarToIDResults.Results = rankedResults[:n]
+	}
+	similarToIDResults.Results = rankedResults
+	return similarToIDResults
 }
 
 //wrapper of searchBeyKeywords to search several queries
@@ -250,6 +258,11 @@ func searchByKeywords(words string, n int) []SearchResult {
 	rankedResults := rank(results)
 	fmt.Println("Number of ranked res: ", len(rankedResults))
 	return rankedResults[:n]
+}
+
+type SimilarToID struct {
+	ID      string         `json:"id"`
+	Results []SearchResult `json:"results"`
 }
 
 //helper struct used to package our results in a smaller form-factor for faster loads

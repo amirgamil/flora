@@ -32,6 +32,8 @@ const HEIGHT = 480;
 //size of moving window
 const WINDOW_WIDTH = 100;
 const WINDOW_HEIGHT = 100;
+const START_ROW = 41;
+const START_COL = 44;
 
 function getRandomArbitrary(min, max) {
     min = Math.ceil(min);
@@ -56,10 +58,11 @@ class World extends Component {
             resolution: 1       // default: 1
           }
         );
+        this.trees = [];
         this.pixiApp.renderer.view.style.margin = "0 auto";
         this.pixiApp.renderer.view.display = "block";
-        this.leftX = 44;
-        this.leftY = 41;
+        this.leftX = START_COL;
+        this.leftY = START_ROW;
         //global sprite offsets to help render the map as the camera moves
         this.playerOffsetX = 0;
         this.playerOffsetY = 0;
@@ -86,6 +89,8 @@ class World extends Component {
         this.closeTreeModal = this.closeTreeModal.bind(this);
         this.updateSections = this.updateSections.bind(this);
         this.fillInRootTree = this.fillInRootTree.bind(this);
+        this.removeTreeFromGrid = this.removeTreeFromGrid.bind(this);
+        this.setSpriteDefaults = this.setSpriteDefaults.bind(this);
         this.player = {
             x: 0,
             y: 0
@@ -114,6 +119,7 @@ class World extends Component {
               .add("/static/img/farmRatio.png")
               .add("/static/img/cliff.png")
               .add("/assets/tileset.json")
+              .add("SectionTitle", "/assets/SectionTitle.fnt")
               .load(this.setup);
         //0 represents up, 1 is right, 2 is down, 3 is left
         //old 32x32
@@ -151,15 +157,15 @@ class World extends Component {
         //we need to be transform our row/col by adjusting it accordingly
         const x = (col - this.leftX) * SQUARELENGTH;
         const y = (row - this.leftY) * SQUARELENGTH;
-        const sprite = container.tile(TextureCache[textureCacheURL], x, y, 
+        container.tile(TextureCache[textureCacheURL], x, y, 
                                                 {u: frame[0], v: frame[1],
                                                 tileWidth: frame[2], tileHeight: frame[3]});
-        const object = {tileData: sprite, identifier: ID};
+        const object = {identifier: ID};
         if (options && ID === TREE) {
             object.treeData = options.data;
         }
         this.fillInGrid(col, row, frame[2], frame[3], object);
-        return sprite
+        return object; 
     }
 
 
@@ -195,12 +201,12 @@ class World extends Component {
         //get center of row, col
         let row = origRow + this.spriteHalfHeight;
         let col = origCol + this.spriteHalfWidth;
+        let rowRounded = Math.round(row);
+        let colRounded = Math.round(col);
         //CODE TO HANDLE ALL OTHER COLLISIONS
-        if (!this.outOfBounds(row, col)) {
-            row = Math.round(row);
-            col = Math.round(col);
-            if (this.grid[row][col]) {
-                const item = this.grid[row][col];
+        if (!this.outOfBounds(rowRounded, colRounded)) {
+            if (this.grid[rowRounded][colRounded]) {
+                const item = this.grid[rowRounded][colRounded];
                 if (item.identifier === TREE) {
                     //do something else
                     console.log("TREE!");
@@ -255,13 +261,16 @@ class World extends Component {
     //fills in an object greater than our square size into the corresponding cells in our grid
     //x, y correspond to the top left point of our image
     fillInGrid(col, row, width, height, object) {
-        //TODO: fix this, not sure?
         const numSquaresWide = Math.ceil(width / SQUARELENGTH);
         const numSquaresHigh = Math.ceil(height / SQUARELENGTH);
+        //store array of col, row in the object for easy access to remove in the future
+        //if we only have reference to the object e.g. with trees
+        object.positions = [];
         for (let y = 0; y < numSquaresHigh; y++) {
             for (let x = 0; x < numSquaresWide; x++) {
                 if (!this.outOfBounds(row + x, col + y)) {
                     this.grid[row + y][col + x] = object;
+                    object.positions.push([col + x, row + y]);
                 } 
             }
         }
@@ -274,21 +283,53 @@ class World extends Component {
         this.fillInGrid(col, row, width , height, object);
     }
 
+    removeTreeFromGrid(object) {
+        object.positions.map((position) => {
+            const [col, row] = position;
+            this.grid[row][col] = {};
+        })
+    }
+
     updateSections() {
+        console.log("searching: ", this.treeData.id)
         fetch("/search", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify(this.treeData.id)
+            body: JSON.stringify({
+                id: this.treeData.id
+            })
         }).then(result => result.json())
           .then(data => {
+              this.showTreeModal = false;
+              this.render();
+              //first remove trees from our grid
+              this.trees.map((tree) => {
+                this.removeTreeFromGrid(tree);
+              });
+              this.staticContainer.pivot.set(0, 0);
+
+              this.leftX = START_COL;
+              this.leftY = 48;
+              this.setSpriteDefaults();
+              this.trees.length = 0;
+
+              //set the sprite back to the location of the root tree
+              this.player = {x: 0, y: 0}
+              this.playerOffsetX = 0;
+              this.playerOffsetY = 0;
+
+              //clear and refill the map, pixi tilemap is optimized for this so it's not
+              //a performance drain
+              this.renderMap();
+              //delete all tree data by setting length of array as 0
+              this.trees.length = 0;
               //set the root tree to the data we just clicked through
               this.fillInRootTree(this.treeData);
-              //populate data, TODO: do I need to remove the previous data?
+              console.log(data);
               this.generateSections(data);
-              //set the sprite back to the location of the root tree
-              this.staticBackground.pivot.set(0, 100);
+            //   this.generateSections(data);
           }).catch(ex => {
               console.log("Error going down the rabbit hole: ", ex);
           })
@@ -330,6 +371,11 @@ class World extends Component {
         //since data may come in two forms
         if (data.id) {
             //do stuff
+            for (let i = 0; i < data.results.length; i += 50) {
+                const index = i / 50;
+                dataSections[index] = {[index]: data.results.splice(0, 50)};
+            }
+            console.log("updated: ", dataSections);
         } else {
             Object.keys(data).forEach((key, i) => {
                 dataSections[i] = {[key]: data[key]}
@@ -345,6 +391,15 @@ class World extends Component {
             const currForestData = dataSections[section][currForestKeyword];
             const totalArea = sectionHeight * sectionWidth;
             const [lowerCol, lowerRow] = currSection;
+            let message = new PIXI.BitmapText(currForestKeyword, {fontName: "Early-GameBoy", 
+                                                            fontSize: 8,
+                                                            width: forbiddenAreaWidth * SQUARELENGTH,
+                                                            height: forbiddenAreaHeight * SQUARELENGTH,
+                                                            align: "center",
+                                                            top: "30px"});
+            this.staticContainer.addChild(message);
+            //adjust the col, row to where we set 0,0 on our map
+            message.position.set((lowerCol + forbiddenAreaWidth - this.leftX) * SQUARELENGTH, (lowerRow + forbiddenAreaHeight + 1 - this.leftY) * SQUARELENGTH);
             //estimate ~ how many trees we can add, each tree is 2 * SQUARELENGTH
             const estimatePerSection = Math.floor((totalArea - forbiddenAreaHeight * forbiddenAreaWidth) / 2); 
             //create copy to randomly populate current grid
@@ -353,14 +408,16 @@ class World extends Component {
             const treeFrame = [160, 80, 16, 32];
             //col and row < 5, col < 5 and row > 5, col > 5, and row < 5, col > 5 and row > 5
             while (treesAdded < estimatePerSection) {
-                //if no more coords free, break
-                if (currBucket.length === 0) break;
+                //if no more coords free, or no more search results break
+                if (currBucket.length === 0 || treesAdded >= currForestData.length) break;
                 const randIndex = Math.floor(Math.random() * currBucket.length);
                 //splice/remove 2 values since each individual tree takes height of two,
                 //and bucket is structured as [row1, col1], [row1, col2]..
                 const [randCol, randRow] = currBucket.splice(randIndex, 2)[0];
                 const [treeCol, treeRow] = [randCol + lowerCol, randRow + lowerRow]
                 const tree = this.loadTexture(treeCol, treeRow, "/static/img/rpg.png", TREE, treeFrame, this.staticBackground, {data: currForestData[treesAdded]});
+                //append reference to the object to our trees array
+                this.trees.push(tree);
                 treesAdded += 1;
             }
         }
@@ -394,7 +451,9 @@ class World extends Component {
         const layers = this.map.layers;
         const mapWidth = this.map.width;
         const mapHeight = this.map.height;
-        this.staticBackground.position.set(0, 0);
+        this.staticContainer.position.set(0, 0);
+        //clear tileset if anything has been filled
+        this.staticBackground.clear();
         for (let layer = 0; layer < layers.length; layer++) {
             const currLayerData = layers[layer].data;
             //calculate exact window we need to iterate, since window is square
@@ -408,7 +467,6 @@ class World extends Component {
                 //y and x are in terms of rows and cols of tiles not raw pixels
                 const y = i / mapHeight| 0;
                 const x = i % mapWidth | 0;
-                //choose tile, TODO: fix this
                 if (currLayerData[i] !== 0) {
                     //only continue if in window of map
                     const yOffset = y - this.leftY;
@@ -417,18 +475,17 @@ class World extends Component {
                     const zeroIndexedID = currLayerData[i] - 1;
                     const tileRow = Math.floor(zeroIndexedID / NUM_COL_TILES);
                     const tileCol = (zeroIndexedID % NUM_COL_TILES);
-                    // const sprite = new PIXI.Texture(TextureCache["/static/img/rpg.png"]);
-                    // sprite.frame = new PIXI.Rectangle(tileCol * SQUARELENGTH, tileRow * SQUARELENGTH, SQUARELENGTH, SQUARELENGTH);
                     // const layer = new PIXI.Sprite(sprite);
                     const xCoord = xOffset * SQUARELENGTH;
                     const yCoord = yOffset * SQUARELENGTH;
                     // this.staticBackground.addChild(layer);
-                    const object = this.staticBackground.tile(TextureCache["/static/img/rpg.png"], xCoord, yCoord, 
+                    //note tile returns the full new tilemap after adding this texture, so no use for it
+                    this.staticBackground.tile(TextureCache["/static/img/rpg.png"], xCoord, yCoord, 
                                                 {u: tileCol * SQUARELENGTH, v: tileRow * SQUARELENGTH,
                                                 tileWidth: SQUARELENGTH, tileHeight: SQUARELENGTH});
                     //only care about the highest level non-zero tile across layers
                     //TODO - not true? what about water?
-                    this.grid[y][x] = {tileData: object, identifier: this.tileset[zeroIndexedID].value};
+                    this.grid[y][x] = {identifier: this.tileset[zeroIndexedID].value};
                     //don't do any culling by default, but the code is left like this in case
                     //I want to revisit it and try after failing to make it work correctly
                     // if (yOffset >= 0 && yOffset <= WINDOW_HEIGHT && xOffset >= 0 && xOffset <= WINDOW_WIDTH) {
@@ -441,11 +498,13 @@ class World extends Component {
     loadMap() {
         return this.getMap()
             .then(() => {
+                this.staticContainer = new PIXI.Container();
                 this.staticBackground = new PIXI.tilemap.Tilemap(TextureCache["/static/img/rpg.png"]);
                 this.staticBackground.width = WIDTH;
                 this.staticBackground.height = HEIGHT;
                 this.renderMap(true);
-                this.pixiApp.stage.addChild(this.staticBackground);
+                this.staticContainer.addChild(this.staticBackground);
+                this.pixiApp.stage.addChild(this.staticContainer);
             }).catch(ex => {
                 console.log("Error loading map: ", ex);
             });
@@ -461,7 +520,7 @@ class World extends Component {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                queries: ["side project", "community", "startup"]
+                queries: ["side project", "community", "startup", "impact", "courage", "build"]
             })
         }).then(result => result.json())
           .then(data => {
@@ -469,11 +528,16 @@ class World extends Component {
           }).catch(ex => {
               console.log("Error getting the initial data: ", ex);
           })
-        const results = [{dummy: true}, {dummy: true}, {dummy: true}, {dummy: true}];
-        results.map(data => {
-            //do stuff to display data
-        });
     }
+
+    //helper method to set the sprite default values
+    setSpriteDefaults() {
+        this.playerColTile = this.leftX + Math.floor((this.sprite.x / SQUARELENGTH) + this.spriteHalfWidth);
+        this.playerRowTile = this.leftY + Math.floor((this.sprite.y / SQUARELENGTH) + this.spriteHalfHeight);
+        this.playerOffsetX = this.sprite.width / 2;
+        this.playerOffsetY = this.sprite.height / 2;
+    }
+
     //initial set up called to render the main screen
     setup() {
         this.loadMap()
@@ -492,16 +556,12 @@ class World extends Component {
                 //Position the sprite on the canvas
                 this.sprite.width = 16;
                 this.sprite.height = 16;
-                //TODO: figure out
                 this.sprite.x = 160;
                 this.sprite.y = 144;
                 //use this as a lot so calculate it once
                 this.spriteHalfWidth = this.sprite.width / 2 / SQUARELENGTH;
                 this.spriteHalfHeight = this.sprite.height / 2 / SQUARELENGTH;
-                this.playerColTile = this.leftX + Math.floor((this.sprite.x / SQUARELENGTH) + this.spriteHalfWidth);
-                this.playerRowTile = this.leftY + Math.floor((this.sprite.y / SQUARELENGTH) + this.spriteHalfHeight);
-                this.playerOffsetX = this.sprite.width / 2;
-                this.playerOffsetY = this.sprite.height / 2;
+                this.setSpriteDefaults();
                 //Initialize velocities to 0 at start
                 this.sprite.vx = 0;
                 this.sprite.vy = 0;
@@ -517,11 +577,12 @@ class World extends Component {
                                 };
                 this.fillInRootTree(rootTree);
 
+                //Get data from backend and load the trees!
+                this.loadSectionsWithData();
+
                 //Add the sprite to the stage
                 this.pixiApp.stage.addChild(this.sprite);
 
-                //Get data from backend and load the trees!
-                this.loadSectionsWithData();
             
                 //Render the stage   
                 this.pixiApp.renderer.render(this.pixiApp.stage);
@@ -687,11 +748,10 @@ class World extends Component {
         //update the value that points to the top left corner of the game
         this.leftX -= this.playerOffsetX / SQUARELENGTH;
         this.leftY -= this.playerOffsetY / SQUARELENGTH;
-        // this.renderMap();
         //make it look like the player is moving by moving the background
         this.player.x += this.sprite.vx;
         this.player.y += this.sprite.vy;
-        this.staticBackground.pivot.set(this.player.x, this.player.y);
+        this.staticContainer.pivot.set(this.player.x, this.player.y);
         // if (this.sprite.vx > 0) {
         //     this.staticBackground.pivot.set(this.player.x - offsetX, this.player.y);
         // } 

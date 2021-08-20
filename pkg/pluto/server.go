@@ -78,7 +78,7 @@ func findRelatedData(w http.ResponseWriter, r *http.Request) {
 		log.Println("Error parsing JSON request: ", err)
 		w.WriteHeader(http.StatusBadGateway)
 	}
-	results := searchByID(searchData.ID, 150)
+	results := searchByID(searchData.ID, 350)
 	json.NewEncoder(w).Encode(results)
 }
 
@@ -104,7 +104,7 @@ func loadInitialData(w http.ResponseWriter, r *http.Request) {
 		log.Println("Error loading the initial data: ", err)
 		w.WriteHeader(http.StatusBadGateway)
 	}
-	results := searchMultipleKeywordQueries(keyWordData.Queries, 150)
+	results := searchMultipleKeywordQueries(keyWordData.Queries, 350)
 	json.NewEncoder(w).Encode(results)
 }
 
