@@ -26,6 +26,8 @@ const STOP_ITEM = "Stop_Item"
 //e.g. background grass
 const BACKGROUND_ITEM = "Background_Item";
 
+const WATER = "Water";
+
 //size of displayed screen
 const WIDTH = 640;
 const HEIGHT = 480;
@@ -58,6 +60,9 @@ class World extends Component {
             resolution: 1       // default: 1
           }
         );
+        this.tick = new Date().getTime();
+        this.tileAnimationTick = 0;
+        this.animations = [];
         this.trees = [];
         this.pixiApp.renderer.view.style.margin = "0 auto";
         this.pixiApp.renderer.view.display = "block";
@@ -91,6 +96,8 @@ class World extends Component {
         this.fillInRootTree = this.fillInRootTree.bind(this);
         this.removeTreeFromGrid = this.removeTreeFromGrid.bind(this);
         this.setSpriteDefaults = this.setSpriteDefaults.bind(this);
+        this.setTreeForModal = this.setTreeForModal.bind(this);
+        this.loadPigs = this.loadPigs.bind(this);
         this.player = {
             x: 0,
             y: 0
@@ -199,20 +206,21 @@ class World extends Component {
     checkSpriteCollision() {
         let [origCol, origRow] = this.getSpriteRowCol();
         //get center of row, col
-        let row = origRow + this.spriteHalfHeight;
-        let col = origCol + this.spriteHalfWidth;
-        let rowRounded = Math.round(row);
-        let colRounded = Math.round(col);
+        let row = Math.round(origRow + this.spriteHalfHeight);
+        let col = Math.round(origCol + this.spriteHalfWidth);
         //CODE TO HANDLE ALL OTHER COLLISIONS
-        if (!this.outOfBounds(rowRounded, colRounded)) {
-            if (this.grid[rowRounded][colRounded]) {
-                const item = this.grid[rowRounded][colRounded];
+        if (!this.outOfBounds(row, col)) {
+            if (this.grid[row][col]) {
+                const item = this.grid[row][col];
                 if (item.identifier === TREE) {
-                    //do something else
-                    console.log("TREE!");
+                    //don't keep calling it if it's already loaded
+                    if (this.showTreeModal && this.treeData === item.treeData) return;
+                    this.displayTreeModal(col, row, Math.floor(window.innerWidth / 2) - 50);
                     return ;
                 } else if (item.identifier === BACKGROUND_ITEM) {
-                    //do something?
+                    if (this.showTreeModal && !this.stopCursorMoving) {
+                        this.closeTreeModal();
+                    }
                     return ;
                 }
             } 
@@ -232,12 +240,14 @@ class World extends Component {
             //col/row tiles return a decimal value => for example, if we have 
             //grid [a, b] if the sprite is halfway into b, pixel value will be that of a + some decimal
             let nextCol = Math.ceil(origCol + 0.5 * nextStep * this.spriteHalfWidth);
+            console.log("first: ", nextCol, row);
             if (this.shouldSpriteStop(row, nextCol)) {
                 this.sprite.vx = 0;
             }
         } else {
             const nextStep = this.orientation === 2 ? 1 : -1;
             let nextRow = Math.ceil(origRow + 0.5 * nextStep * this.spriteHalfHeight)
+            console.log("first: ", col, nextRow);
             if (this.shouldSpriteStop(nextRow, col)) {
                 this.sprite.vy = 0;
             }
@@ -245,6 +255,12 @@ class World extends Component {
 
     }
 
+    loadPigs() {
+        //pigs inside cage
+
+
+        //pigs outside cage
+    }
 
     getRandomLocation(width, height) {
         //randomly select a pixel chunk to return
@@ -329,12 +345,12 @@ class World extends Component {
               this.fillInRootTree(this.treeData);
               console.log(data);
               this.generateSections(data);
-            //   this.generateSections(data);
           }).catch(ex => {
               console.log("Error going down the rabbit hole: ", ex);
           })
     }
 
+    //main logic for generating forests at the bottom of the map
     //pass in data which is either 
     //1. Have JSON of {keyword: [result1, result2,...], keyword: [result1, ...] -> how we load at the start
     //2. Have JSON of {id: [result1, result2, ......]} if we are browsing nested or related 
@@ -391,6 +407,7 @@ class World extends Component {
             const currForestData = dataSections[section][currForestKeyword];
             const totalArea = sectionHeight * sectionWidth;
             const [lowerCol, lowerRow] = currSection;
+            //use BitmapText instead of text to perserve quality as we scale text up
             let message = new PIXI.BitmapText(currForestKeyword, {fontName: "Early-GameBoy", 
                                                             fontSize: 8,
                                                             width: forbiddenAreaWidth * SQUARELENGTH,
@@ -405,6 +422,7 @@ class World extends Component {
             //create copy to randomly populate current grid
             var currBucket = [...bucket];
             var treesAdded = 0;
+            var id = 0;
             const treeFrame = [160, 80, 16, 32];
             //col and row < 5, col < 5 and row > 5, col > 5, and row < 5, col > 5 and row > 5
             while (treesAdded < estimatePerSection) {
@@ -413,11 +431,16 @@ class World extends Component {
                 const randIndex = Math.floor(Math.random() * currBucket.length);
                 //splice/remove 2 values since each individual tree takes height of two,
                 //and bucket is structured as [row1, col1], [row1, col2]..
-                const [randCol, randRow] = currBucket.splice(randIndex, 2)[0];
-                const [treeCol, treeRow] = [randCol + lowerCol, randRow + lowerRow]
-                const tree = this.loadTexture(treeCol, treeRow, "/static/img/rpg.png", TREE, treeFrame, this.staticBackground, {data: currForestData[treesAdded]});
-                //append reference to the object to our trees array
-                this.trees.push(tree);
+                if (randIndex < currBucket.length - 1) {
+                    if (currBucket[randIndex][0] === currBucket[randIndex + 1][0] && currBucket[randIndex][1] + 1 === currBucket[randIndex + 1][1]) {
+                        const [randCol, randRow] = currBucket.splice(randIndex, 2)[0];
+                        const [treeCol, treeRow] = [randCol + lowerCol, randRow + lowerRow]
+                        const tree = this.loadTexture(treeCol, treeRow, "/static/img/rpg.png", TREE, treeFrame, this.staticBackground, {data: currForestData[id]});
+                        id += 1;
+                        //append reference to the object to our trees array
+                        this.trees.push(tree);
+                    }
+                }
                 treesAdded += 1;
             }
         }
@@ -437,7 +460,12 @@ class World extends Component {
               this.initGrid();
               this.tileset = {};
               data.tileset.tiles.map((currTile, _) => {
-                  this.tileset[currTile.id] = currTile.properties[0];
+                  this.tileset[currTile.id] = currTile.properties.reduce((prev, curr, _) => {
+                    if (curr) {
+                        prev[curr["name"]] = curr["value"]
+                    }
+                    return prev;
+                  }, {});
               });
           }).catch(ex => {
               console.log("Error fetching map: ", ex);
@@ -485,7 +513,7 @@ class World extends Component {
                                                 tileWidth: SQUARELENGTH, tileHeight: SQUARELENGTH});
                     //only care about the highest level non-zero tile across layers
                     //TODO - not true? what about water?
-                    this.grid[y][x] = {identifier: this.tileset[zeroIndexedID].value};
+                    this.grid[y][x] = this.tileset[zeroIndexedID];
                     //don't do any culling by default, but the code is left like this in case
                     //I want to revisit it and try after failing to make it work correctly
                     // if (yOffset >= 0 && yOffset <= WINDOW_HEIGHT && xOffset >= 0 && xOffset <= WINDOW_WIDTH) {
@@ -694,14 +722,27 @@ class World extends Component {
 
     closeTreeModal() {
         this.showTreeModal = false;
+        this.stopCursorMoving = false;
         this.render();
     }
 
-    displayTreeModal() {
+    displayTreeModal(col, row, offsetX) {
+        this.setTreeForModal(col, row, offsetX);
         this.showTreeModal = true;
         this.render();
         //transform object directly
         document.getElementsByClassName("treeModal")[0].style.transform=`translate(${this.treeData["left"]}px, ${this.treeData["top"]}px)`
+    }
+
+    //helper method to set up data in preparation for showing a modal
+    setTreeForModal(col, row, offsetX) {
+        this.treeData = this.grid[row][col].treeData;
+        this.treeData["top"] = Math.floor(window.innerHeight / 2) - 220;
+        if (offsetX <= 200) {
+            this.treeData["left"] = offsetX
+        } else if (offsetX - WIDTH <= 200) {
+            this.treeData["left"] = offsetX - 200;
+        }             
     }
 
     handleCursorMove(evt) {
@@ -712,23 +753,13 @@ class World extends Component {
         //based on pixels, each tile of SQUARELENGTH effectives becomes 2 * SQUARRELENGTH)
         const col = Math.floor(this.leftX + offsetX / (2 * SQUARELENGTH));
         const row = Math.floor(this.leftY + offsetY / (2 * SQUARELENGTH));
-
+        console.log(offsetX, offsetY);
         if (this.grid[row][col].identifier === TREE) {
-            this.treeData = this.grid[row][col].treeData;
-            this.treeData["top"] = 20;
-            if (offsetX <= 50 || offsetX - WIDTH <= 50) {
-                this.treeData["left"] = offsetX;
-                // this.treeData["top"] = offsetY - 200;
-            } else if (offsetY <= 50) {
-                // this.treeData["top"] = offsetY;
-                this.treeData["left"] = offsetX - 200;
-            } 
+            evt.preventDefault();
             //save ~ pixel location of tree to adjust the modal to the correct position
             this.stopCursorMoving = true;
-            this.displayTreeModal();
-        } else {
-            this.stopCursorMoving = false;
-        }
+            this.displayTreeModal(col, row, offsetX);
+        }     
     }
 
     //delta = amount of fractional lag between frames
@@ -752,10 +783,18 @@ class World extends Component {
         this.player.x += this.sprite.vx;
         this.player.y += this.sprite.vy;
         this.staticContainer.pivot.set(this.player.x, this.player.y);
-        // if (this.sprite.vx > 0) {
-        //     this.staticBackground.pivot.set(this.player.x - offsetX, this.player.y);
-        // } 
         this.sprite.texture.frame = this.walkingSteps[this.orientation][this.step];
+        this.tick = new Date().getTime();
+        // this.pixiApp.renderer.plugins.tilemap.tileAnim[0] = tileAnim * 144;
+        if (this.tick > this.tileAnimationTick) {
+            //update animations every 300ms
+            this.tileAnimationTick = this.tick + 300;
+            this.animations.map((element) => {
+                //do stuff!
+            })
+        }
+
+
     }
 
     remove() {
@@ -763,15 +802,17 @@ class World extends Component {
     }
 
     create() {
-        return html`<div class="colWrapper gameContainer">
-            ${this.pixiApp.view}
-            ${this.showTreeModal ? html`<div class = "treeModal">
-                <h4 class="modalTitle">🌲 ${this.treeData.title}</h4>
-                <p><a href=${this.treeData.link} target="_blank">Source</a></p>
-                <p>${this.treeData.id === "home" ? this.treeData.content : this.treeData.content + "..."}</p>
-                <button onclick=${this.updateSections}>⬇️ the 🐇 hole</button>
-                <button class="closeModal" onclick=${this.closeTreeModal}>x</button>
-            </div>` : null}
+        return html`<div class="colWrapper">
+            <div class="gameContainer"> 
+                ${this.pixiApp.view}
+                ${this.showTreeModal ? html`<div class = "treeModal">
+                    <h4 class="modalTitle">🌲 ${this.treeData.title}</h4>
+                    <p><a href=${this.treeData.link} target="_blank">Source</a></p>
+                    <p class="modalContent">${this.treeData.id === "home" ? this.treeData.content : this.treeData.content + "..."}</p>
+                    <button class="closeModal" onclick=${this.updateSections}>⬇️ the 🐇 hole</button>
+                    <button class="closeModal" onclick=${this.closeTreeModal}>x</button>
+                </div>` : null}
+            </div>
         </div>`
     }
 }

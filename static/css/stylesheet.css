@@ -22,6 +22,7 @@ body.dark {
 }
 
 .content {
+    height: 100vh;
     color: var(--bg);
     flex-grow: 1;
     overflow: auto;
@@ -52,11 +53,10 @@ footer {
 }
 
 .gameContainer {
-    align-self: center;
-    justify-self: center;
     overflow: none;
-    padding: 0;
-    margin: 0;
+    padding: 0 25px 0 25px;
+    background: black;
+    margin: 0 auto;
 }
 
 .textbox {
@@ -95,6 +95,21 @@ button {
     box-shadow: 2px 2px black;
     align-self: center;
     justify-content: center;
+}
+
+.colWrapper {
+    width: 100%;
+    height: 100%;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.modalContent {
+    position: relative;
+    margin-top: -5px;
 }
 
 .treeModal {

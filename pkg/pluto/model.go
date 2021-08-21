@@ -86,7 +86,8 @@ func parseFloatArrayFromString(floatArray []string) ([]float64, error) {
 	return floatVector, nil
 }
 
-//calculates the document vector for a record's data by averaging all of the word vectors
+//calculates the document vector for a record's data by taking the weighted average of
+//all the words in a document. Weight is based on frequency of that word in the whole document
 func (model *Model) getDocumentVector(data string) ([]float64, error) {
 	words := analyze(data)
 	vectors := make([][]float64, 0)
