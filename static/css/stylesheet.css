@@ -21,6 +21,26 @@ body.dark {
     --bg: #222;
 }
 
+.loader {
+    width: 640px;
+    text-align: center;
+}
+
+.loadingText {
+    font-size: 1em;
+    color: white;
+}
+
+.instructions {
+    margin-top: 20px;
+    margin-left: 30px;
+}
+
+#bar {
+    height: 5px;
+    background: white;
+    width: 1%;
+}
 .content {
     height: 100vh;
     color: var(--bg);
@@ -53,6 +73,7 @@ footer {
 }
 
 .gameContainer {
+    position: relative;
     overflow: none;
     padding: 0 25px 0 25px;
     background: black;

@@ -70,7 +70,7 @@ func loadMap(w http.ResponseWriter, r *http.Request) {
 
 func findRelatedData(w http.ResponseWriter, r *http.Request) {
 	type query struct {
-		ID string `json:"id"`
+		Result SearchResult `json:"result"`
 	}
 	var searchData query
 	err := json.NewDecoder(r.Body).Decode(&searchData)
@@ -78,7 +78,7 @@ func findRelatedData(w http.ResponseWriter, r *http.Request) {
 		log.Println("Error parsing JSON request: ", err)
 		w.WriteHeader(http.StatusBadGateway)
 	}
-	results := searchByID(searchData.ID, 350)
+	results := searchByID(searchData.Result, 350)
 	json.NewEncoder(w).Encode(results)
 }
 

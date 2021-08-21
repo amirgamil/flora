@@ -19,12 +19,15 @@ const STEP_SIZE = 1;
 
 //some unique identifiers we assign to our Sprites for easier collision detection and other stuff
 const TREE = "Tree";
+
 //a background item which CANNOT be "walked over" e.g. should NOT allow sprite to move over it
 //hence a "stop item"
 const STOP_ITEM = "Stop_Item"
 //a background item which CAN be "walked over" e.g. should allow sprite to move over it
 //e.g. background grass
 const BACKGROUND_ITEM = "Background_Item";
+
+const PIG = "Pig"
 
 const WATER = "Water";
 
@@ -49,6 +52,63 @@ function getRandomFromBucket() {
  }
 
 
+class Instructions extends Component {
+    init(closeInstructions) {
+        this.closeInstructions = closeInstructions;
+        this.nextInstruction = this.nextInstruction.bind(this);
+        this.prevInstruction = this.prevInstruction.bind(this);
+        this.instructions = [{title: "Welcome!", content: `Welcome to the digital garden for my digital garden. Here, you'll
+                              be able to browse through all of the data I care about and find
+                              related data to go down spontaneous rabbit holes.`},
+                             {title: "🏃‍♂️ Movement", content: `Move with W, A, S, and D or the arrow keys. The entire world is explorable, knock yourself out!`},
+                             {title: "🏡 Trees and Data", content: `Every tree is some data. You can click it with your mouse, or walk towards it
+                             and stand "on it." A window should pop up with some details.`},
+                             {title: "🌳 Tree Type 1 ", content: `There are two types of trees. Trees above where you spawn will be circular
+                             or fat. These are special trees - they're a handpicked collection of digital artifacts
+                             that have impacted my life in some major way. `},
+                             {title: "🌲 Tree Type 2", content: `The second type of tree will be found below the house. These are trees which contain data you
+                             can find connections to and from. You do this by clicking on the <button class="closeModal" onclick=${this.closeInstructions}>⬇️ the 🐇 hole.</button> but not just yet!`},
+                             {title: "🌲 Parent Tree", content: `The first tree of this type you will encounter will be on its own. This is the "parent" tree from which
+                                                             you can view related pieces of data to it. On the first load, this is just my home page, and clicking on the
+                                                             button will take you down a random rabbit hole!`},
+                             {title: "⛓⛓️ Outgoing Connections", content: `You can view all data related to it if you keep walking below to the forests. These will contain
+                             a clearing of trees from my footprint that are related to this root tree. You can then click on any one of those trees
+                             to find all related data to that and so forth!`},
+                            {title: "🌲🌲🌲First Forests", content: `On the first load, there is no 'parent tree'. So the forest contains a collection of data
+                            that is most related to topics I care about (like side projects, community etc.). These are not handpicked! I use a custom semantic and text search algorithm
+                            to find the most relevant data -> this is also how all the connections for a given piece of data are generated!`},
+                            {title: "That's it!", content: `Have fun!`}];
+        this.current = 0;
+
+    }
+
+    prevInstruction() {
+        if (this.current > 0) {
+            this.current -= 1;
+            this.render();
+        }     
+    }
+
+    nextInstruction() {
+        if (this.current < this.instructions.length - 1) {
+            this.current += 1;
+            this.render();
+        } else {
+            this.closeInstructions();
+        }
+    }
+
+    create() {
+        return html`<div class = "treeModal instructions">
+                    <h4 class="modalTitle">${this.instructions[this.current].title}</h4>
+                    <p class="modalContent" innerHTML=${this.instructions[this.current].content}></p>
+                    <button class="closeModal" onclick=${this.nextInstruction}>Next</button>
+                    <button class="closeModal" onclick=${this.prevInstruction}>Back</button>
+                    <button class="closeModal" onclick=${this.closeInstructions}>Close</button>
+            </div>`
+    }
+}
+
 class World extends Component {
     init() {
         //create the Pixi application
@@ -61,9 +121,15 @@ class World extends Component {
           }
         );
         this.tick = new Date().getTime();
+        //used to track time for our animations
         this.tileAnimationTick = 0;
-        this.animations = [];
+        //used to track which frame to use for the animations
+        this.tileAnim = 0;
+        this.text = [];
         this.trees = [];
+        this.showInstructions = true;
+        this.removeInstructions = this.removeInstructions.bind(this);
+        this.instructions = new Instructions(this.removeInstructions);
         this.pixiApp.renderer.view.style.margin = "0 auto";
         this.pixiApp.renderer.view.display = "block";
         this.leftX = START_COL;
@@ -110,21 +176,18 @@ class World extends Component {
         //add padding to account for gaps between cells so that game canvas does not stretch beyond full screen
         window.addEventListener("keydown", this.handleKeyDown);
         window.addEventListener("keyup", this.handleKeyUp);
+        this.loading = true;
+        this.progress = 1;
         // this.pixiApp.view.addEventListener("mousemove", this.handleCursorMove)
-        this.pixiApp.view.addEventListener("click", this.handleCursorMove)
+        this.pixiApp.view.addEventListener("click", this.handleCursorMove);
+        this.pixiApp.loader.onProgress.add(() => {
+            this.progress = Math.round(this.pixiApp.loader.progress.toFixed(4));
+            this.render();
+            document.getElementById("bar").style.width = this.progress + "%";
+        }); // called once per loaded/errored file
         this.pixiApp.loader
               .add("/static/img/character.png")
               .add("/static/img/rpg.png")
-              .add("/static/img/front.png")
-              .add("/static/img/frontwall.png")
-              .add("/static/img/houseRatio.png")
-              .add("/static/img/walkwayside.png")
-              .add("/static/img/walkwayup.png")
-              .add("/static/img/grid.png")
-              .add("/static/img/farm.png")
-              .add("/static/img/rock.png")
-              .add("/static/img/farmRatio.png")
-              .add("/static/img/cliff.png")
               .add("/assets/tileset.json")
               .add("SectionTitle", "/assets/SectionTitle.fnt")
               .load(this.setup);
@@ -140,6 +203,11 @@ class World extends Component {
         this.orientation = 2;
         this.step = 0;
     } 
+
+    removeInstructions() {
+        this.showInstructions = false;
+        this.render();
+    }
 
     fillInRootTree(data) {
         this.rootTree = data;
@@ -208,6 +276,7 @@ class World extends Component {
         //get center of row, col
         let row = Math.round(origRow + this.spriteHalfHeight);
         let col = Math.round(origCol + this.spriteHalfWidth);
+        // console.log(origCol, origRow, col, row);
         //CODE TO HANDLE ALL OTHER COLLISIONS
         if (!this.outOfBounds(row, col)) {
             if (this.grid[row][col]) {
@@ -255,8 +324,86 @@ class World extends Component {
 
     }
 
+    //loads a collection of important links that are static
+    loadStaticTrees() {
+        //note loads the 4x4 trees
+        const treeLocs = [[47, 45], [58, 45], [46, 42], [61, 44], [49, 41], [46, 39], [49, 37], [46, 36], 
+                          [62, 41], [60, 38], [58, 37], [63, 35]];
+        const staticData  =  [{title: "The most precious resource is agency",
+                         link: "https://simonsarris.substack.com/p/the-most-precious-resource-is-agency",
+                         content: "Just read this.",
+                         id: "special"
+                        },
+                        {title: "Inventing on principle",
+                         link: "https://www.youtube.com/watch?v=PUv66718DII&ab_channel=RuiOliveira",
+                         content: `Bret Victor's seminal piece which completely changed the way
+                         I think about creative work.`,
+                         id: "special"
+                        },
+                        {title: "Reflecting on building my own tools from scratch and 'inventing on principle'",
+                         link: "https://amirbolous.com/posts/build",
+                         content: "Reflecting on applying Bret Victor's piece in my personal life.",
+                         id: "special"
+                        },
+                        {title: "Randy Pausch Last Lecture: Achieving Your Childhood Dreams",
+                         link: "https://www.youtube.com/watch?v=ji5_MqicxSo",
+                         content: "Pausch's last lecture which was the first inkling of how I wanted to live my life when I was still in high school.",
+                         id: "special"
+                        },
+                        {title: "Before the Startup with Paul Graham", 
+                         link: "https://www.youtube.com/watch?v=f4_14pZlJBs&ab_channel=YCombinator",
+                         content: "PG's OG talk about startups when I was just a lost, bushy-tailed sophmore.",
+                         id: "special"
+                        },
+                        {title: "How to understand things",
+                         link: "https://nabeelqu.co/understanding",
+                         content: "A phenomenal piece on curiosity and courage that I think about often when I'm battling trying to understand something.",
+                         id: "special"
+                        },
+                        {title: "Trying to try", 
+                         link: "https://www.lesswrong.com/posts/WLJwTJ7uGPA5Qphbp/trying-to-try",
+                         content: "A class lesswrong piece which I refer back to in moments of self-doubt.",
+                         id: "special"
+                        },
+                        {title: "Dive in",
+                         link: "https://mindingourway.com/dive-in-2/",
+                         content: "A framework that I'm reminded of every day when I'm trying to do something difficult and uncomfortable.",
+                         id: "special"
+                        },
+                        {title: "You don't have to be busy to be prolific",
+                         link: "https://thesephist.com/posts/momentum/",
+                         content: "Doing this (working towards a project or something) every single day for 5 months (and running!) made me rethink how much progress in a given timeframe was possible.",
+                         id: "special"
+                        },
+                        {title: "How I side project",
+                         link: "https://thesephist.com/posts/how-i-side-project/",
+                         content: "The piece that got me back into serially hacking after I spent a year lost and adrift.",
+                         id: "special"
+                        },
+                        {title: "The Lesson to Unlearn",
+                         link: "http://www.paulgraham.com/lesson.html",
+                         content: "Every single problem I've had with school packaged in an absolute banger.",
+                         id: "special"
+                        },
+                        {title: "Sources of Bullshit in Startups",
+                         link: "https://www.youtube.com/watch?v=m4isFputh68&t=3489s&ab_channel=Decode",
+                         content: "A super honest depiction of all the BS surrounding startups.",
+                         id: "special"
+                        }];
+        treeLocs.map(([col, row], index) => {
+            const object = {identifier: TREE, treeData: staticData[index]}
+            this.fillInGrid(col, row, 32, 32, object);
+        });
+                        
+    }
+
     loadPigs() {
         //pigs inside cage
+        const topLeft = [50, 29];
+        const topRight = [58, 29];
+        const bottomLeft = [50, 33];
+        const bottomRight = [58, 33];
+
 
 
         //pigs outside cage
@@ -314,7 +461,7 @@ class World extends Component {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                id: this.treeData.id
+                result: this.treeData
             })
         }).then(result => result.json())
           .then(data => {
@@ -327,22 +474,25 @@ class World extends Component {
               this.staticContainer.pivot.set(0, 0);
 
               this.leftX = START_COL;
-              this.leftY = 48;
+              this.leftY = 52;
               this.setSpriteDefaults();
               this.trees.length = 0;
 
-              //set the sprite back to the location of the root tree
-              this.player = {x: 0, y: 0}
-              this.playerOffsetX = 0;
-              this.playerOffsetY = 0;
+              this.stopCursorMoving = false;
+              //set the sprite's location adjusted for where they will now be
+              this.player = {x: 0, y: 0};
 
+              this.text.map((currText) => {
+                  currText.destroy();
+              })
               //clear and refill the map, pixi tilemap is optimized for this so it's not
               //a performance drain
               this.renderMap();
               //delete all tree data by setting length of array as 0
               this.trees.length = 0;
               //set the root tree to the data we just clicked through
-              this.fillInRootTree(this.treeData);
+              this.fillInRootTree(data.previous);
+              this.loadStaticTrees();
               console.log(data);
               this.generateSections(data);
           }).catch(ex => {
@@ -385,13 +535,12 @@ class World extends Component {
         const dataSections = []
         //standarize data format in preparation of constructing the forest
         //since data may come in two forms
-        if (data.id) {
+        if (data.results) {
             //do stuff
             for (let i = 0; i < data.results.length; i += 50) {
                 const index = i / 50;
                 dataSections[index] = {[index]: data.results.splice(0, 50)};
             }
-            console.log("updated: ", dataSections);
         } else {
             Object.keys(data).forEach((key, i) => {
                 dataSections[i] = {[key]: data[key]}
@@ -417,6 +566,7 @@ class World extends Component {
             this.staticContainer.addChild(message);
             //adjust the col, row to where we set 0,0 on our map
             message.position.set((lowerCol + forbiddenAreaWidth - this.leftX) * SQUARELENGTH, (lowerRow + forbiddenAreaHeight + 1 - this.leftY) * SQUARELENGTH);
+            this.text.push(message);
             //estimate ~ how many trees we can add, each tree is 2 * SQUARELENGTH
             const estimatePerSection = Math.floor((totalArea - forbiddenAreaHeight * forbiddenAreaWidth) / 2); 
             //create copy to randomly populate current grid
@@ -506,14 +656,21 @@ class World extends Component {
                     // const layer = new PIXI.Sprite(sprite);
                     const xCoord = xOffset * SQUARELENGTH;
                     const yCoord = yOffset * SQUARELENGTH;
-                    // this.staticBackground.addChild(layer);
-                    //note tile returns the full new tilemap after adding this texture, so no use for it
-                    this.staticBackground.tile(TextureCache["/static/img/rpg.png"], xCoord, yCoord, 
-                                                {u: tileCol * SQUARELENGTH, v: tileRow * SQUARELENGTH,
-                                                tileWidth: SQUARELENGTH, tileHeight: SQUARELENGTH});
-                    //only care about the highest level non-zero tile across layers
-                    //TODO - not true? what about water?
                     this.grid[y][x] = this.tileset[zeroIndexedID];
+                    const options = {u: tileCol * SQUARELENGTH, v: tileRow * SQUARELENGTH,
+                                                tileWidth: SQUARELENGTH, tileHeight: SQUARELENGTH};
+                    if (this.grid[y][x].metadata === WATER || this.grid[y][x].metadata === PIG) {
+                        options.animX = 1;
+                        options.animY = 0;
+                        if (this.grid[y][x].metadata === PIG) {
+                            options.animCount = 3;
+                        } else {
+                            options.animDivisor = 1;
+                        }
+                    }
+                    //note tile returns the full new tilemap after adding this texture, so no use for it
+                    this.staticBackground.tile(TextureCache["/static/img/rpg.png"], xCoord, yCoord, options);
+                    //only care about the highest level non-zero tile across layers
                     //don't do any culling by default, but the code is left like this in case
                     //I want to revisit it and try after failing to make it work correctly
                     // if (yOffset >= 0 && yOffset <= WINDOW_HEIGHT && xOffset >= 0 && xOffset <= WINDOW_WIDTH) {
@@ -570,6 +727,8 @@ class World extends Component {
     setup() {
         this.loadMap()
             .then(() => {
+                this.loading = false;
+                this.render();
                 //Create the `tileset` sprite from the texture
                 let texture = TextureCache["/static/img/character.png"];
                 //Create a rectangle object that defines the position and
@@ -602,7 +761,9 @@ class World extends Component {
                                     link: "https://amirbolous.com/",
                                     title: "Welcome to my digital garden!",
                                     top: 20,
-                                };
+                                }
+                this.loadStaticTrees();
+                
                 this.fillInRootTree(rootTree);
 
                 //Get data from backend and load the trees!
@@ -730,8 +891,14 @@ class World extends Component {
         this.setTreeForModal(col, row, offsetX);
         this.showTreeModal = true;
         this.render();
-        //transform object directly
-        document.getElementsByClassName("treeModal")[0].style.transform=`translate(${this.treeData["left"]}px, ${this.treeData["top"]}px)`
+        const modals = document.getElementsByClassName("treeModal");
+        //instruction modal is still being displayed
+        if (modals.length >= 2) {
+            //transform object directly
+            modals[1].style.transform = `translate(${this.treeData["left"]}px, ${this.treeData["top"]}px)`
+        } else {
+            modals[0].style.transform = `translate(${this.treeData["left"]}px, ${this.treeData["top"]}px)`
+        }
     }
 
     //helper method to set up data in preparation for showing a modal
@@ -753,7 +920,6 @@ class World extends Component {
         //based on pixels, each tile of SQUARELENGTH effectives becomes 2 * SQUARRELENGTH)
         const col = Math.floor(this.leftX + offsetX / (2 * SQUARELENGTH));
         const row = Math.floor(this.leftY + offsetY / (2 * SQUARELENGTH));
-        console.log(offsetX, offsetY);
         if (this.grid[row][col].identifier === TREE) {
             evt.preventDefault();
             //save ~ pixel location of tree to adjust the modal to the correct position
@@ -789,9 +955,13 @@ class World extends Component {
         if (this.tick > this.tileAnimationTick) {
             //update animations every 300ms
             this.tileAnimationTick = this.tick + 300;
-            this.animations.map((element) => {
-                //do stuff!
-            })
+            // console.log(this.pixiApp.renderer.plugins.tilemap.tileAnim);
+            this.pixiApp.renderer.plugins.tilemap.tileAnim[0] = this.tileAnim * SQUARELENGTH;
+            if (this.tileAnim === 1) {
+                this.tileAnim = 0;
+            } else {
+                this.tileAnim = 1;
+            }
         }
 
 
@@ -803,16 +973,26 @@ class World extends Component {
 
     create() {
         return html`<div class="colWrapper">
-            <div class="gameContainer"> 
+                ${this.loading ? html`<div class="loader"> 
+                    <p class="loadingText">Loading ${this.progress}%</p>
+                    <div id="bar"></div>
+                </div></p>` : html`<div class="gameContainer"> 
                 ${this.pixiApp.view}
+                ${this.showInstructions ? this.instructions.node : null}
                 ${this.showTreeModal ? html`<div class = "treeModal">
                     <h4 class="modalTitle">🌲 ${this.treeData.title}</h4>
                     <p><a href=${this.treeData.link} target="_blank">Source</a></p>
-                    <p class="modalContent">${this.treeData.id === "home" ? this.treeData.content : this.treeData.content + "..."}</p>
-                    <button class="closeModal" onclick=${this.updateSections}>⬇️ the 🐇 hole</button>
+                    <p class="modalContent">${this.treeData.id === "home" || this.treeData.id === "special" ? this.treeData.content : this.treeData.content + "..."}</p>
+                    ${() => {
+                        if (this.treeData.id === "home") {
+                            return html`<button class="closeModal" onclick=${this.updateSections}>⬇️ a 🐇 hole</button>`
+                        } else if (this.treeData.id !== "special") {
+                            return html`<button class="closeModal" onclick=${this.updateSections}>⬇️ the 🐇 hole</button>`
+                        }
+                    }}
                     <button class="closeModal" onclick=${this.closeTreeModal}>x</button>
                 </div>` : null}
-            </div>
+            </div>`}
         </div>`
     }
 }
@@ -849,7 +1029,7 @@ class App extends Component {
                     }
                 }}
             </div>
-            <footer>Built with <a href="https://github.com/amirgamil/poseidon">Poseidon</a> by <a href="https://amirbolous.com/">Amir</a> and <a href="">open source</a> on GitHub</footer>
+            <footer>Built with <a href="https://github.com/amirgamil/poseidon">Poseidon</a> by <a href="https://amirbolous.com/">Amir</a> and <a href="https://github.com/amirgamil/pluto">open source</a> on GitHub</footer>
         </main>` 
     }
 }

@@ -179,7 +179,6 @@ func getTfIdfVector(tokenFreq map[string]int, size int) []float64 {
 	numToksInDoc := len(tokenFreq)
 	for token, frequencyOfToken := range tokenFreq {
 		//multiplies the tf * idf
-		fmt.Println(corpus[token])
 		result[corpus[token]] = (float64(frequencyOfToken) / float64(numToksInDoc)) * idf(token)
 	}
 	//note, all words which we don't access above default to 0 when we initalize our slice
@@ -210,15 +209,27 @@ type result struct {
 }
 
 //takes the string id of a record and returns the n most similar records
-func searchByID(id string, n int) SimilarToID {
-	currVec := documentVectors[id]
+func searchByID(prevResult SearchResult, n int) SimilarToID {
+	//if id is home, then we go down a random rabbit hole!
+	if prevResult.ID == "home" {
+		//grab a random ID which we can do quickly and safely by iterating through the map
+		//and taking the first result
+		for i := 0; i < 1; i++ {
+			for id, record := range data {
+				prevResult = SearchResult{ID: id, Title: record.Title, Link: record.Link, Content: getContentSnippet(record.Content)}
+				break
+			}
+		}
+
+	}
+	currVec := documentVectors[prevResult.ID]
 	results := make([]result, len(documentVectors)-1)
-	similarToIDResults := SimilarToID{ID: id}
+	similarToIDResults := SimilarToID{Previous: prevResult}
 	i := 0
 	for recordID, recordVec := range documentVectors {
-		if recordID != id {
+		if recordID != prevResult.ID {
 			//TODO: check why some scores are NaN
-			score := computeScore(currVec, recordVec, id, recordID)
+			score := computeScore(currVec, recordVec, prevResult.ID, recordID)
 			results[i] = result{score: score, id: recordID}
 			i += 1
 		}
@@ -262,8 +273,8 @@ func searchByKeywords(words string, n int) []SearchResult {
 }
 
 type SimilarToID struct {
-	ID      string         `json:"id"`
-	Results []SearchResult `json:"results"`
+	Previous SearchResult   `json:"previous"`
+	Results  []SearchResult `json:"results"`
 }
 
 //helper struct used to package our results in a smaller form-factor for faster loads
@@ -272,6 +283,14 @@ type SearchResult struct {
 	Link    string `json:"link"`
 	Content string `json:"content"`
 	ID      string `json:"id"`
+}
+
+func getContentSnippet(content string) string {
+	if len(content) < 200 {
+		return content
+	} else {
+		return content[:200]
+	}
 }
 
 func rank(unsorted []result) []SearchResult {
@@ -286,11 +305,7 @@ func rank(unsorted []result) []SearchResult {
 	for _, val := range unsorted {
 		currData := data[val.id]
 		content := ""
-		if len(currData.Content) < 200 {
-			content = currData.Content
-		} else {
-			content = currData.Content[:200]
-		}
+		content = getContentSnippet(currData.Content)
 		rankedResults[i] = SearchResult{Title: currData.Title, Link: currData.Link,
 			Content: content, ID: currData.ID}
 		i += 1
