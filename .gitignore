@@ -1,1 +1,6 @@
 *.DS_Store
+corpus/recordVectors.json
+models/fast-min-text-wiki-news-300d.vec
+models/fast-text-wiki-news-300d100k.vec
+models/fast-text-wiki-news-300d.vec
+progress/
