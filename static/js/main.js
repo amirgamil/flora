@@ -62,7 +62,7 @@ class Instructions extends Component {
                               related data to go down spontaneous rabbit holes.`},
                              {title: "🏃‍♂️ Movement", content: `Move with W, A, S, and D or the arrow keys. The entire world is explorable, knock yourself out!`},
                              {title: "🏡 Trees and Data", content: `Every tree is some data. You can click it with your mouse, or walk towards it
-                             and stand "on it." A window should pop up with some details.`},
+                             and stand "on it" (in which case walk off it to close the pop up) A window should pop up with some details.`},
                              {title: "🌳 Tree Type 1 ", content: `There are two types of trees. Trees above where you spawn will be circular
                              or fat. These are special trees - they're a handpicked collection of digital artifacts
                              that have impacted my life in some major way. `},
@@ -75,7 +75,7 @@ class Instructions extends Component {
                              a clearing of trees from my footprint that are related to this root tree. You can then click on any one of those trees
                              to find all related data to that and so forth!`},
                             {title: "🌲🌲🌲First Forests", content: `On the first load, there is no 'parent tree'. So the forest contains a collection of data
-                            that is most related to topics I care about (like side projects, community etc.). These are not handpicked! I use a custom semantic and text search algorithm
+                            that is most related to topics I care about (like side projects, community etc.). These are <strong>not handpicked</strong>! I use a custom semantic and text search algorithm
                             to find the most relevant data -> this is also how all the connections for a given piece of data are generated!`},
                             {title: "That's it!", content: `Have fun!`}];
         this.current = 0;

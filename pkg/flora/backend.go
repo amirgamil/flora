@@ -1,12 +1,10 @@
-package pluto
+package flora
 
 import (
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
-
-	jsoniter "github.com/json-iterator/go"
 )
 
 //inverted index from Apollo
@@ -106,7 +104,7 @@ func createFile(path string) {
 //load the pretrained model containing word embeddings
 func loadPretrainedEmbeddings() error {
 	//./models/fast-text-wiki-news-300d.vec
-	file, err := os.Open("./models/fast-min-text-wiki-news-300d.vec")
+	file, err := os.Open("./models/fast-text-wiki-news-300d100k.vec")
 	if err != nil {
 		log.Println("Error loading the pretrained model: ", err)
 	}
@@ -142,7 +140,7 @@ func writeDocumentVectorsToDisk() {
 		fmt.Println("Error trying to write the new document vectors index to disk: ", err)
 	}
 	defer jsonFile.Close()
-	jsoniter.NewEncoder(jsonFile).Encode(documentVectors)
+	json.NewEncoder(jsonFile).Encode(documentVectors)
 }
 
 //caled on server launch to generate all the embeddings of our data
