@@ -157,3 +157,15 @@ button {
     align-self: center;
     font-size: 1.2em;
 }
+
+@media only screen and (max-width: 768px) {
+    p {
+        color: white;
+        text-align: center;
+    }
+    .content {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+}

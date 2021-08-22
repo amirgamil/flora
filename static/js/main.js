@@ -188,7 +188,6 @@ class World extends Component {
         this.pixiApp.loader
               .add("/static/img/character.png")
               .add("/static/img/rpg.png")
-              .add("/assets/tileset.json")
               .add("SectionTitle", "/assets/SectionTitle.fnt")
               .load(this.setup);
         //0 represents up, 1 is right, 2 is down, 3 is left
@@ -284,7 +283,7 @@ class World extends Component {
                 if (item.identifier === TREE) {
                     //don't keep calling it if it's already loaded
                     if (this.showTreeModal && this.treeData === item.treeData) return;
-                    this.displayTreeModal(col, row, Math.floor(window.innerWidth / 2) - 50);
+                    this.displayTreeModal(col, row, Math.floor(window.innerWidth / 2) - WIDTH / 2 - 60);
                     return ;
                 } else if (item.identifier === BACKGROUND_ITEM) {
                     if (this.showTreeModal && !this.stopCursorMoving) {
@@ -997,37 +996,18 @@ class World extends Component {
     }
 }
 
-const about = html`<div class="colWrapper">
-    <h1>About</h1>
-    <p>Stuff... 
-    </p>
-</div>`
-
 class App extends Component {
     init() {
         //initalize stuff here
-        this.router = new Router(1);
         this.world = new World();
-        this.router.on({
-            route: ["/", "/about"],
-            handler: (route) => {
-                this.route = route;
-                this.render();
-            }
-        })
+        this.mobile = window.innerWidth < 768;
     }
 
     create() {
         return html`<main>
             <div class = "content">
-                ${() => {
-                    switch (this.route) {
-                        case "/about":
-                            return about;
-                        default:
-                            return this.world.node;
-                    }
-                }}
+                ${this.mobile ? html`<p>To 🔓 the secrets of the world, view this on desktop </p>` 
+                : this.world.node}
             </div>
             <footer>Built with <a href="https://github.com/amirgamil/poseidon">Poseidon</a> by <a href="https://amirbolous.com/">Amir</a> and <a href="https://github.com/amirgamil/pluto">open source</a> on GitHub</footer>
         </main>` 

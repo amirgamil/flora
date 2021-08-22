@@ -64,7 +64,7 @@ func (parser *modelParser) parse() (*Model, error) {
 
 //parses a given string line and stores the resulting vector in the embeddings map
 func (model *Model) parseLine(line string) error {
-	data := strings.Split(line, " ")
+	data := strings.Split(strings.TrimSpace(line), " ")
 	vector, err := parseFloatArrayFromString(data[1:])
 	if err != nil {
 		log.Println("Error processing word vector: ", err)
@@ -155,6 +155,8 @@ func cosineSim(vector1 []float64, vector2 []float64) (float64, error) {
 		sum2Squared += math.Pow(b, 2)
 		sumProduct += a * b
 	}
+	//return negative value so we can sort by distance (i.e. closer distange
+	//will have larger absolute values, closer to 0)
 	return sumProduct / (math.Sqrt(sum1Squared) * math.Sqrt(sum2Squared)), nil
 }
 

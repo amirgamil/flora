@@ -104,7 +104,7 @@ func createFile(path string) {
 //load the pretrained model containing word embeddings
 func loadPretrainedEmbeddings() error {
 	//./models/fast-text-wiki-news-300d.vec
-	file, err := os.Open("./models/fast-text-wiki-news-300d100k.vec")
+	file, err := os.Open("./models/fast-text-wiki-news-300d50k.vec")
 	if err != nil {
 		log.Println("Error loading the pretrained model: ", err)
 	}
@@ -121,12 +121,15 @@ func loadPretrainedEmbeddings() error {
 
 func calculateDocumentVectors() error {
 	for recordKey, record := range data {
-		docVec, err := model.getDocumentVector(record.Content)
-		if err != nil {
-			log.Println("Error parsing document vecotr: ", recordKey, err)
-			return err
+		//make sure content is not empty before calculating a document vector
+		if record.Content != "" {
+			docVec, err := model.getDocumentVector(record.Content)
+			if err != nil {
+				log.Println("Error parsing document vecotr: ", recordKey, err)
+				return err
+			}
+			documentVectors[recordKey] = docVec
 		}
-		documentVectors[recordKey] = docVec
 	}
 	//write new document vectors to disk
 	writeDocumentVectorsToDisk()
