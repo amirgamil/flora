@@ -1,6 +1,10 @@
 # Pluto
 ### A 2D digital garden/virtual world to explore connections across your data and go down spontaneous rabbit holes
 
+## Demo
+https://user-images.githubusercontent.com/7995105/130368243-63160f37-4d1e-4387-969f-b2ed8b7787b7.mov
+
+
 ## Contents
 [Background](#background)  
 [How do I navigate the garden?](#how-do-i-navigate-the-garden)
